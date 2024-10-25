@@ -1,0 +1,48 @@
+function [tempAcc, topNeuronIdx,neuronW,neuronAcc,tempAccShuf] = runDecoder(data1,data2,subsample)
+
+decodingLim = 100; selTopNeuronLim = 31:60;
+tempAcc = zeros(length(data1),decodingLim); 
+tempAccShuf = zeros(length(data1),decodingLim,100); 
+
+topNeuronIdx = {}; nTop = 20; 
+neuronAcc = zeros(size(data1{1},1),length(data1),decodingLim);
+neuronW = zeros(size(data1{1},1),length(data1),decodingLim);
+for i = 1:length(data1)
+    tic;
+    tempS1a1 = smoothdata(data1{i},2,'movmean',1); 
+    tempS2a2 = smoothdata(data2{i},2,'movmean',1); 
+    tempCellAcc = zeros(size(data1{i},1),length(selTopNeuronLim)); 
+
+    for j = 1:length(selTopNeuronLim)
+        temp1 = squeeze(tempS1a1(:,selTopNeuronLim(j),:)); temp2 = squeeze(tempS2a2(:,selTopNeuronLim(j),:));
+        if size(temp1,2) > size(temp2,2); temp1 = temp1(:,1:size(temp2,2)); 
+        else; temp2 = temp2(:,1:size(temp1,2)); end 
+        temp1 = temp1(:,); 
+        temp2 = temp2(:,1:subSample);
+
+        decoder = fn_runDecoder(temp1',temp2', 0.8);
+        tempCellAcc(:,j) = decoder.cellAcc(:,2);
+    end
+    [~, topNeuronIdx{i}] = sort(mean(tempCellAcc,2),'Descend'); 
+    tempTop = topNeuronIdx{i}(1:nTop);
+
+    for j = 1:decodingLim
+        temp1 = squeeze(tempS1a1(tempTop,j,:)); temp2 = squeeze(tempS2a2(tempTop,j,:));
+        
+        if size(temp1,2) > size(temp2,2); temp1 = temp1(:,1:size(temp2,2)); 
+        else; temp2 = temp2(:,1:size(temp1,2)); end 
+        temp1 = temp1(:,1:subSample); 
+        temp2 = temp2(:,1:subSample); 
+
+        decoder = fn_runDecoder(temp1',temp2', 0.8);
+        tempAcc(i,j) = decoder.topAcc(2);
+        tempAccShuf(i,j,:) = decoder.popAccShuf(:,2);
+
+        % weights of all neurons
+        temp1 = squeeze(tempS1a1(:,j,1:subSample)); temp2 = squeeze(tempS2a2(:,j,1:subSample));
+        decoder = fn_runDecoder(temp1',temp2', 0.8);
+        neuronAcc(:,i,j) = decoder.cellAcc(:,2);
+        neuronW(:,i,j) = decoder.cellW;
+    end
+    t = toc; disp(t)
+end

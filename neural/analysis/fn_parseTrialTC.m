@@ -7,7 +7,7 @@ preFrameStim = 30; tempFrameStim = 0;
 preFrameChoice = 30; tempFrameChoice = 0;
 for i = 1:nTrials
     if i<nTrials; endFrame = behData(i+1,10)-1;
-    else endFrame = size(F,2); end 
+    else; endFrame = size(F,2); end 
     stimFrameStart = behData(i,10)-preFrameStim;
     choiceFrame = behData(i,11)-preFrameChoice;
     newF_stimAligned{i} = F(:,stimFrameStart:endFrame);

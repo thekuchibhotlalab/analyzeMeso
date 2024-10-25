@@ -1,3 +1,4 @@
+
 function fn_parseROI(mousePath,roiOrder,roiSize)
 temp = dir(mousePath);
 for k = 1:length(roiOrder)

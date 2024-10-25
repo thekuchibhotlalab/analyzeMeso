@@ -53,7 +53,7 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
 end
 
 function summaryStat = makePlotTask1(beh,daySplitFlag,plotFlag)
-learningCurveBin = 450; 
+learningCurveBin = 600; 
 
 [summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 

@@ -1,7 +1,7 @@
-function [dffList, selectedBehList] = fn_parseTrial(F, beh, Fops, behOps,alignFlag)
+function [dffList, selectedBehList,behOps] = fn_parseTrial(F, beh, Fops, behOps,alignFlag)
 % selDay = [111723, 111823];
-trimFrame = 200; 
-dffList = {};selectedBehList = {};
+trimFrame = 100; 
+dffList = cell(1,length(behOps.dateNum));selectedBehList = cell(1,length(behOps.dateNum));
 for i= 1:length(behOps.dateNum)
     selSession = Fops.sessionListNum(Fops.dayList==(behOps.dateNum(i)) & strcmp(Fops.sessionList,'2AFC'));
     selSession(isnan(selSession)) = [];
@@ -14,11 +14,11 @@ for i= 1:length(behOps.dateNum)
         if size(dffChoice,2) > trimFrame; dffChoice = dffChoice(:,1:trimFrame,:); end 
         switch alignFlag
             case 'stim'      
-                if isempty(tempdff); tempdff = cat(3, tempdff, dffStim);
+                if isempty(tempdff); tempdff=dffStim; %tempdff = cat(3, tempdff, dffStim);
                 elseif ~isempty(dffStim); tempdff = fn_catFillNan(3, tempdff, dffStim, 2); end 
             case 'choice'
         
-                if isempty(tempdff); tempdff = cat(3, tempdff, dffChoice);
+                if isempty(tempdff); tempdff=dffChoice; %tempdff = cat(3, tempdff, dffChoice);
                 elseif ~isempty(dffChoice); tempdff = fn_catFillNan(3, tempdff, dffChoice, 2); end 
         end 
         tempselectedBeh = fn_catFillNan(1, tempselectedBeh, selectedBeh); 
@@ -26,7 +26,10 @@ for i= 1:length(behOps.dateNum)
     dffList{i} = tempdff; selectedBehList{i} = tempselectedBeh;
 end 
 
-
+notEmptyIdx = cellfun(@(x)(~isempty(x)),dffList);
+behOps.dateNum = behOps.dateNum(notEmptyIdx);
+dffList = dffList(notEmptyIdx);
+selectedBehList = selectedBehList(notEmptyIdx);
 end 
 
 function [dffStim,dffChoice, selectedBeh] = fn_parseTrialSession(Fnew, beh, Fops, selDayBeh, selSession,behOps)
@@ -61,9 +64,7 @@ function [dffStim,dffChoice, selectedBeh] = fn_parseTrialSession(Fnew, beh, Fops
                 end
             case 'zz153'
                 if selDayBeh == 20240524 && selSession == 2
-                    selSession = 3; 
-                    selectedBeh = beh(beh(:,1) == selDayBeh & beh(:,3) == selSession,:); 
-                    selectedDff = fn_getDff(selectedF','method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',5000)';
+                    selSession = 3; loadData();
                     disp('Exception reached/solved -- zz153, 20240524, session 2')
                 end 
                 if selDayBeh == 20240613 && (selSession == 5 || selSession == 6) 
@@ -71,6 +72,41 @@ function [dffStim,dffChoice, selectedBeh] = fn_parseTrialSession(Fnew, beh, Fops
                     skipFlag = true;selectedBeh = []; 
                 end 
 
+            case 'zz159'
+                if selDayBeh == 20240624 && selSession == 1
+                    selSession = 3; loadData();
+                    disp('Exception reached/solved -- zz159, 20240624, session 1')
+                end 
+
+                if selDayBeh == 20240629 && selSession == 2
+                    selectedBeh = selectedBeh(1:97,:);
+                    disp('Exception reached/solved -- zz159, 20240629, session 2')
+                end 
+
+                if selDayBeh == 20240716 && (selSession == 1 || selSession == 2)
+                    selSession = selSession+1; loadData();
+                    disp('Exception reached/solved -- zz159, 20240716, session 1')
+
+                end 
+
+            case 'zz151'
+                if selDayBeh == 20240416 || selDayBeh == 20240506
+                    selSession = selSession+1; loadData();
+                    disp('Exception reached/solved -- zz151, 20240416 or 0506, session all')
+                end 
+                if selDayBeh == 20240514 && selSession == 1
+                    selSession = 2; loadData();
+                    disp('Exception reached/solved -- zz151, 20240514, session 1')
+                elseif selDayBeh == 20240514 && selSession == 2
+                    selSession = 1; loadData();
+                    disp('Exception reached/solved -- zz151, 20240514, session 2')
+                end 
+                
+
+        end 
+        function loadData()
+            selectedBeh = beh(beh(:,1) == selDayBeh & beh(:,3) == selSession,:); 
+            selectedDff = fn_getDff(selectedF','method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',5000)';
         end 
         
 

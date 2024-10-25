@@ -1,0 +1,37 @@
+function data = fn_plotPSTHbyDay(mouse,plotFlag)
+ops.mouse = mouse;
+switch ops.mouse
+    case 'zz153_T1_PPC'
+        ops.mouse = 'zz153';ops.area = 'PPC'; ops.behavPath = ['G:\ziyi\mesoData\' ops.mouse '_behavior\matlab\']; 
+        ops.task = 'task1';
+        ops.Fpath = ['C:\Users\zzhu34\Documents\tempdata\' ops.mouse '_' ops.area filesep ops.task filesep ];
+        ops.dayRange = {'20240516','20240522'};
+
+        ops.task2 = 'task2';
+        ops.Fpath2 = ['C:\Users\zzhu34\Documents\tempdata\' ops.mouse '_' ops.area filesep ops.task2 filesep ];
+        ops.dayRange2 = {'20240523','20240528'};
+            
+    case 'zz159'
+        ops.area = 'PPC'; ops.task = 'task2';
+        ops.Fpath = ['C:\Users\zzhu34\Documents\tempdata\' ops.mouse '_' ops.area filesep ops.task filesep ];
+        %ops.dayRange = {'20240725','20240727'}; % expert level
+        ops.dayRange = {'20240705','20240710'}; % task 2 transition
+        ops.behavPath = ['G:\ziyi\mesoData\' ops.mouse '_behavior\matlab\'];    
+end 
+
+[data, beh, behOps] = fn_loadBehNeuroData(ops);
+if isfield(ops,'Fpath2')
+    ops.Fpath = ops.Fpath2; ops.dayRange = ops.dayRange2; 
+    [data2, beh2, behOps2] = fn_loadBehNeuroData(ops); 
+end 
+    
+tempCat = @(x,y)(cat(2,x,y));
+data = fn_structfun(tempCat,{data,data2});
+
+if plotFlag
+    plotPSTH
+end 
+
+
+
+end 

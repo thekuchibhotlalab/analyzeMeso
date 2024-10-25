@@ -1,10 +1,10 @@
 function beh = fn_getBehav(ops)
 % ops.mouse (required) -- mouse name, 'zz142'
-% ops.datapath (required) -- location of data ['G:\ziyi\mesoData\' mouse '_behavior\matlab\']
+% ops.behavPath (required) -- location of data ['G:\ziyi\mesoData\' mouse '_behavior\matlab\']
 % ops.plot -- flag for plotting
 % ops.date -- date to plot, a cell of {}
 % ops.dayRange -- range of dates to plot, an array of doubles [20231016, 20231104]
-filelist = dir([ops.datapath filesep ops.mouse '_*_2AFCsession*.mat']);
+filelist = dir([ops.behavPath filesep ops.mouse '_*_2AFCsession*.mat']);
 if isfield(ops,'date') 
     if ~iscell(ops.date); ops.date = {ops.date}; end 
     fileSel = false(1,length(filelist));
@@ -30,7 +30,7 @@ beh = {}; tempBeh = []; %sessionCount = 0;
 for i = 1:length(filename)
     tempFilename = strsplit(filename{i},'_');
     day = tempFilename{2}; 
-    load([ops.datapath filesep filename{i}],'allData');
+    load([ops.behavPath filesep filename{i}],'allData');
     if ~strcmp(tempDay,day)
         if dayCount ~=0; beh{dayCount} = tempBeh;end
 

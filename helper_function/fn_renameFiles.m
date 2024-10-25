@@ -19,8 +19,8 @@ function fn_renameFiles(folderPath)
             if strcmp(fname_split{2}(1:4),'2025')
                 fname_split{2}(1:4) = '2024';
             end
-            if ~strcmp(fname_split{1},'zz153')
-                fname_split{1} = 'zz153';
+            if ~strcmp(fname_split{1},'zz159')
+                fname_split{1} = 'zz159';
                 
             end
 
