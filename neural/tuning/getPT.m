@@ -1,8 +1,8 @@
 clear;
 %suite2ppath = 'C:\Users\zzhu34\Documents\tempdata\zz133\072623\tuning\suite2p';
 
-suite2ppath = 'C:\Users\zzhu34\Documents\tempdata\zz159\060624\green_AC\suite2p';%'D:\zz159\suite2p';
-
+suite2ppath = 'G:\rockfish\ziyi\zz166\green_AC2\suite2p\';%'D:\zz159\suite2p';
+savetuningpath = 'G:\rockfish\ziyi\zz166\green_AC2';
 load([suite2ppath filesep 'plane0\Fall.mat']);
 dffArg = {'method', 'movMean','dffWindow',2000,'baselineCorrectionPostDff',...
     false,'baselineCorrectionWindow',2000};
@@ -11,13 +11,13 @@ dffArg = {'method', 'movMean','dffWindow',2000,'baselineCorrectionPostDff',...
 %% get puretone parameters
 global nPlanes
 nPlanes = 1; 
-%selFrames = 1:10200;
-selFrames = 1:6800;
+selFrames = 1:10200;
+%selFrames = 1:6800;
 rawTC = F(:,selFrames)'; 
 [roi,nNeuron,iscellFlag] = fn_processSuite2pROI(suite2ppath,nPlanes,'cell');
 rawTC = rawTC(:,iscellFlag==1);
 %% run getTuning
-getTuning_oneChannel(rawTC,nNeuron,roi,[suite2ppath filesep 'tuning' filesep],suite2ppath,'tuningParamMesoPT');
+getTuning_oneChannel(rawTC,nNeuron,roi,savetuningpath,suite2ppath,'tuningParamMesoPT_15rep');
 
 %% get experimental tone parameters
 global nPlanes

@@ -25,7 +25,7 @@ frameRate = 15.03/nPlanes; % in the future, do not hard code this.
 pretoneFrames = 10;
 baselineFrames = 5;
 
-toneOnset = 8/nPlanes;
+toneOnset = 4/nPlanes;
 peakFrameBin = ceil(0.66 * frameRate);
 
 % --------------- Method of Calculating Dff and Smoothing Data-----------------------

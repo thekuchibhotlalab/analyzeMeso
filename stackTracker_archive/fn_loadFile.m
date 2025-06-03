@@ -1,8 +1,10 @@
 function handles = fn_loadFile(handles,setVar, textButtonStr)
 if ~isfield(handles,'datapath')
-    selDir = uigetfile(pwd);
+    [selname, selDir] = uigetfile([pwd filesep '*.*']);
+    selDir = [selDir filesep selname];
 else
-    selDir = uigetfile(handles.datapath);
+    [selname, selDir] = uigetfile([handles.datapath filesep '*.*']);
+    selDir = [selDir filesep selname];
 end
 
 tempFilename = strsplit(selDir,filesep); 

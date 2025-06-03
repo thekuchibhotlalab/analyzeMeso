@@ -22,7 +22,7 @@ function varargout = stackTrackerGUI(varargin)
 
 % Edit the above text to modify the response to help stackTrackerGUI
 
-% Last Modified by GUIDE v2.5 10-Apr-2024 18:27:14
+% Last Modified by GUIDE v2.5 17-Mar-2025 16:35:50
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -222,25 +222,21 @@ function runStack_Callback(hObject, eventdata, handles)
 % hObject    handle to runStack (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-handles.nROI = get(handles.nROIedit,'String');
-handles.roi1 = get(handles.roiEdit1,'String');
-handles.roi2 = get(handles.roiEdit2,'String');
+handles.nROItext = get(handles.nROIedit,'String');
+handles.roiLenText = get(handles.roiEdit1,'String');
+handles=fn_runStackAlign(handles);
 guidata(hObject,handles);
-fn_runStackAlign(handles);
 
 
-% --- Executes on button press in runML.
-function runML_Callback(hObject, eventdata, handles)
-% hObject    handle to runML (see GCBO)
+% --- Executes on button press in loadStack.
+function loadStack_Callback(hObject, eventdata, handles)
+% hObject    handle to loadStack (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-handles.nROI = get(handles.nROIedit,'String');
-handles.roi1 = get(handles.roiEdit1,'String');
-handles.roi2 = get(handles.roiEdit2,'String');
-MLlabel1 = get(handles.MLedit1,'String');
-MLlabel2 = get(handles.editAnimal,'String');
+handles.nROItext = get(handles.nROIedit,'String');
+handles.roiLenText = get(handles.roiEdit1,'String');
+handles=fn_loadStack(handles);
 guidata(hObject,handles);
-fn_runStackMLAP(handles);
 
 % --- Executes on button press in runAP.
 function runAP_Callback(hObject, eventdata, handles)
@@ -324,6 +320,29 @@ function roiEdit2_Callback(hObject, eventdata, handles)
 % --- Executes during object creation, after setting all properties.
 function roiEdit2_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to roiEdit2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function roiEdit3_Callback(hObject, eventdata, handles)
+% hObject    handle to roiEdit3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of roiEdit3 as text
+%        str2double(get(hObject,'String')) returns contents of roiEdit3 as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function roiEdit3_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to roiEdit3 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 

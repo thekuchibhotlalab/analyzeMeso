@@ -4,6 +4,7 @@ img = (tiffreadVolume([tiffPath filesep fileName],'PixelRegion', {[1 inf], [1 in
 img = permute(img,[2 1 3]);xpix = size(img,1); ypix = size(img,2); nFrame = size(img,3); 
 
 spacing = floor((ypix - roiSize(2)*nROI) / (nROI-1)); 
+if isnan(spacing); spacing = 0; end 
 disp([fileName ' Spacing is ' num2str(spacing)])
 
 

@@ -15,14 +15,6 @@ function fn_renameFiles(folderPath)
             % Get the file extension
             [~,fname,ext] = fileparts(oldFileName);
             fname_split = strsplit(fname,'_');
-            
-            if strcmp(fname_split{2}(1:4),'2025')
-                fname_split{2}(1:4) = '2024';
-            end
-            if ~strcmp(fname_split{1},'zz159')
-                fname_split{1} = 'zz159';
-                
-            end
 
             fname = strjoin(fname_split,'_');
             % Create the new file name

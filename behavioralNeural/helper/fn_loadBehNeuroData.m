@@ -1,4 +1,4 @@
-function [data, beh, behOps]= fn_loadBehNeuroData(behOps)
+function [data, beh, behOps,Fops]= fn_loadBehNeuroData(behOps)
 
 % load the data
 [Fnew, beh, Fops,behOps] = fn_loadData(behOps);

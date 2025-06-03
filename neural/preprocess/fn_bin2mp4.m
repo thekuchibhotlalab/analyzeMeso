@@ -14,6 +14,7 @@ writerObj.FrameRate = 150;
 % set the seconds per image
 % open the video writer
 open(writerObj);
+
 % write the frames to the video
 global info;
 writeVideo(writerObj, double(A));

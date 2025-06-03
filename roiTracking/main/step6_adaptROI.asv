@@ -1,0 +1,157 @@
+%function step6_adaptROI(datapath)
+
+
+% ROI that are tracked are adapted for each suite2p session image
+
+load([datapath filesep 'ops.mat'],'ops');
+load([datapath filesep 'alignedOps.mat' ],'alignedOps');
+load([datapath filesep 'stackROI_final.mat' ],'stackROI');
+refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'refStackReconstruct' ]);
+%% try this
+
+[roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackROI, alignedOps.suite2pImg, ops.offsetMap,refImg_roiReference, ops.refStackSelLoc);
+save(stackROI_)
+%% old code
+%matchedRoi = {}; roi = struct(); 
+%stackROI.imageJ = ReadImageJROI('G:\rockfish\ziyi\zz153_PPC\meanImg\refStackAlignROI_reconstruct\roiMean.zip');
+%[stackROI.maskRaw,stackROI.coordRaw,stackROI.centroidRaw] = convertROIcoord(stackROI.imageJ,stackROI.suite2pImg(:,:,1)); 
+%roiRefImg = double(imread([datapath '\refStackAlignROI_reconstruct\refImg_mean.tiff' ]))/65536;
+
+%for k = 1:size(stackROI.suite2pImg,3)
+%    disp(k);
+%    tempOffsetMap = matchedOffsetMap(:,:,k);
+%    matchedRoi{k} = projectROI(roi, stackROI.refStackSelLoc, stackROI.suite2pImg(:,:,k), matchedOffsetMap(:,:,k),roiRefImg, Pix);
+%end 
+
+%end 
+%% functions 
+function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackROI, suite2pImg, offsetMap,refImg_roiReference,refStackSelLoc)
+    excludeEdge = 10;
+    Pix = 20; 
+    % Get image size
+    [imgHeight, imgWidth, nImg] = size(suite2pImg);
+
+    % Determine step size for overlapping blocks (1/4 of Pix)
+    stepSize = Pix ;
+    % Define valid ranges excluding edges
+
+
+    % take note of which ROI is here
+    roiFinal = cell(nImg,length(stackROI.coord));
+    ishereFinal = nan(nImg,length(stackROI.coord));
+    alignIdx1Mean = nan(1,nImg); alignIdx2Mean = nan(1,nImg);
+    for i = 1:nImg
+        tic;
+        
+        [roiMatched,ishereMatched,alignIdx1Mean(i),alignIdx2Mean(i)] = matchImg(suite2pImg(:,:,i),offsetMap(:,:,i),refImg_roiReference,refStackSelLoc,stackROI);
+        roiFinal(i,:) = roiMatched;
+        ishereFinal(i,:) = ishereMatched;
+        t = toc; disp(['Session' int2str(i) ', time elapsed = ' num2str(t)])
+    end 
+    function [roiMatched,ishereMatched,alignIdx1Mean,alignIdx2Mean] = matchImg(suite2pImg,offsetMap,refImg_roiReference,refStackSelLoc,stackROI)
+        % Loop over blocks
+
+        nRoi = size(stackROI.ishere,2); nDepth = length(refStackSelLoc);
+        % Define valid ranges excluding edges
+        validStartY = excludeEdge + 1;
+        validEndY =  imgWidth - excludeEdge;
+        validStartX = excludeEdge + 1;
+        validEndX = imgHeight - excludeEdge;
+
+        % first do a rough alignment that shifts the stack towards suite2p
+        refImg_aligned = refImg_roiReference/65536;
+        alignIdx1 = {};
+        for a = 1:nDepth
+            [tempref, alignIdx1{a}] = fn_fastAlign(cat(3,suite2pImg,refImg_aligned(:,:,a)),'center');
+            refImg_aligned(:,:,a) = tempref(:,:,2);
+        end
+        roiCoordShift1 = {}; roiCenterShift1 = {};
+        for a = 1:size(stackROI.centroidRedrawn,1)
+            for b = 1:size(stackROI.centroidRedrawn,2)
+                roiCoordShift1{a,b} = [stackROI.coordRedrawn{a,b}(:,1) + alignIdx1{a}(2,1),  stackROI.coordRedrawn{a,b}(:,2) + alignIdx1{a}(2,2)];
+                roiCenterShift1{a,b} = [stackROI.centroidRedrawn{a,b}(1) + alignIdx1{a}(2,1),  stackROI.centroidRedrawn{a,b}(2) + alignIdx1{a}(2,2)];
+            end 
+        end 
+        %for a = 1:7
+        %    fn_plotImgROI(refImg_aligned(:,:,a),roiCoordShift1(a,:))
+        %end 
+        % Loop over blocks
+        roiMatched = cell(1,nRoi);
+        ishereMatched = nan(1,nRoi);
+        alignIdx2Mean = [];alignIdx2=[];
+        for y = validStartY:stepSize:validEndY - Pix + 1
+            for x = validStartX:stepSize:validEndX - Pix + 1
+                % Extract corresponding blocks from fixed and moving images
+                updateROI();
+                alignIdx2Mean = [alignIdx2Mean nanmean(abs(alignIdx2(2,:)))];
+            end
+        end
+    
+        % Add additional blocks to ensure last rows/columns are covered
+        for y = validEndY - Pix + 1
+            for x = validStartX:stepSize:validEndX - Pix + 1
+                updateROI();
+                alignIdx2Mean = [alignIdx2Mean nanmean(abs(alignIdx2(2,:)))];
+            end
+        end
+    
+        for x = validEndX - Pix + 1
+            for y = validStartY:stepSize:validEndY - Pix + 1
+                updateROI();
+                alignIdx2Mean = [alignIdx2Mean nanmean(abs(alignIdx2(2,:)))];
+            end
+        end
+    
+         % Cover the bottom-right corner explicitly
+        if validEndY - Pix + 1 > 0 && validEndX - Pix + 1 > 0
+            updateROI();
+            alignIdx2Mean = [alignIdx2Mean nanmean(abs(alignIdx2(2,:)))];
+        end
+        matchedROI.roi = roiMatched;
+        matchedROI.ishere = ishereMatched;
+        alignIdx1Mean = fn_cell2mat(alignIdx1,3); alignIdx1Mean = alignIdx1Mean(2,:,:);
+        alignIdx1Mean = nanmean(abs(alignIdx1Mean(:)));
+        alignIdx2Mean = nanmean(alignIdx2Mean);
+        function updateROI()
+            tempY = y:y+Pix-1; tempX = x:x+Pix-1;
+            fixedBlock = suite2pImg(tempX, tempY);
+            tempOffset = offsetMap(tempX, tempY); tempOffset = nanmean(tempOffset(:));
+
+            [~,selDepth] = min(abs(refStackSelLoc - tempOffset)); % this depth matching did not consider oursize the extreme z offsets
+            tempRefImg = refImg_aligned(:,:,selDepth);
+            movingBlock = tempRefImg(tempX, tempY);
+            [tempAligned,alignIdx2] = fn_fastAlign(cat(3,fixedBlock,movingBlock),'center');
+
+            % find what rois at this depth and patch needs to be
+            % recorded with coord and shift
+            tempCenter = fn_cell2mat(roiCenterShift1(selDepth,:),1);
+            tempCenter(:,1) =  tempCenter(:,1)+alignIdx2(2,1);  tempCenter(:,2) =  tempCenter(:,2)+alignIdx2(2,2);
+            tempROIflag = find(tempCenter(:,1)>=tempX(1) & tempCenter(:,1)<=tempX(end) &...
+                tempCenter(:,2)>=tempY(1) & tempCenter(:,2)<=tempY(end)) ; % select roi in the block that needs to be updated
+            ishereMatched(tempROIflag) = stackROI.ishere(selDepth,tempROIflag);
+
+            for z = 1:length(tempROIflag)
+                tempIdx = tempROIflag(z);
+                roiMatched{tempIdx} = [roiCoordShift1{selDepth,tempIdx}(:,1) + alignIdx2(2,1),...
+                    roiCoordShift1{selDepth,tempIdx}(:,2) + alignIdx2(2,2)];
+            end 
+        end 
+    end
+end 
+
+
+ function img = loadRefstacksel(folder_path)
+    % Get a list of all files in the folder
+    files = dir([folder_path filesep '*.tiff']);
+    
+    % Extract the filenames
+    filenames = {files.name};
+    
+    % Filter filenames that contain 'refImg' but do not contain '_'
+    filtered_filenames = filenames(contains(filenames, 'refImg') & ~contains(filenames, '_'));
+    img = {};
+    for k = 1:length(filtered_filenames)
+        img{k} = double(imread([folder_path filesep filtered_filenames{k}]));
+    end 
+    img = fn_cell2mat(img,3);
+end 

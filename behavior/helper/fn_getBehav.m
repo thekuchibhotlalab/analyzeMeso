@@ -46,8 +46,6 @@ for i = 1:length(filename)
         allData = processAllData(allData,dayCount,sessionCount,day); 
 
         tempBeh = fn_catFillNan(1,tempBeh,allData);
-
-        %tempBeh = cat(1,tempBeh,allData);
     end
     if i==length(filename) && ~isempty(tempBeh); beh{dayCount} = tempBeh; end
 end

@@ -1,48 +1,40 @@
+mousePath = 'E:\zz159_resize';
+roiOrder = {'AC','PPC'};
+roiSize = [450 900]; 
+stitchSize = 510;
 
-function fn_parseROI(mousePath,roiOrder,roiSize)
 temp = dir(mousePath);
 for k = 1:length(roiOrder)
     mkdir([mousePath filesep 'green_' roiOrder{k}]);
 end 
 
-for i = 3:length(temp)     
+for i = 1:length(temp)     
     tiffPath  = [mousePath filesep temp(i).name];
     fileNames = dir([tiffPath filesep '*.tif']);
     fileName = {fileNames.name};
     
     for j = 1:length(fileName)
         disp(fileName{j})
-        try
-            saveh5(mousePath,tiffPath,fileName{j},roiOrder,roiSize);
-        catch
+        if j==1       
+            saveh5(mousePath,tiffPath,fileName{j},roiOrder,roiSize,stitchSize);
+        else
+            saveh5(mousePath,tiffPath,fileName{j},{'PPC','AC'},[900 450],stitchSize);
+        end 
 
-            disp([fileName{j} ' not done!'])
-        end
     end
 end 
 
-end
+%% functions
 
-%% ALL FUNCTIONS
-function frameParse = parseFrame(frameIdx,frameBin)
-nChunk = ceil(length(frameIdx)/frameBin);
-frameParse = {};
-for i = 1:nChunk
-    if i~=nChunk; frameParse{i} = frameIdx(frameBin*(i-1)+1:frameBin*i);
-    else; frameParse{i} = frameIdx(frameBin*(i-1)+1:length(frameIdx));
-    end
-end
-end
-
-
-function saveh5(mousePath,tiffPath,filename,roiOrder,roiSize)
+function saveh5(mousePath,tiffPath,filename,roiOrder,roiSize,stitchSize)
 stack = TIFFStack([tiffPath filesep filename]);
 nFrames = size(stack,3);
 gFrames = 1:1:nFrames; %rFrames = 2:2:nFrames;
 frameBin = 2000; 
 frameParseG = parseFrame(gFrames,frameBin);
-%frameParseR = parseFrame(rFrames,frameBin);
-%roiOrder = {'AC'}; roiY = {1:450};
+
+
+
 if length(roiOrder) == 2
     roiY{1} = 1:roiSize(1);
     roiY{2} = (size(stack,1)-roiSize(2)+1):size(stack,1);
@@ -69,6 +61,10 @@ for k = 1:length(roiOrder)
 
     for j = 1:length(frameParseG)
         tempStack = int16(stack(yFrames, :,frameParseG{j}));
+        tempStackStitch = nan(size(tempStack,1),stitchSize,size(tempStack,3));
+        tempStackStitch(:,1:size(tempStack,2),:) = tempStack;
+        tempStack = tempStackStitch;
+
         temph5Size = [size(tempStack,1) size(tempStack,2)];
         if(j==1)
             h5create(saveFilename,'/data',[temph5Size Inf],'DataType','int16','ChunkSize',[temph5Size frameBin]);
@@ -83,4 +79,14 @@ for k = 1:length(roiOrder)
 end
 
 
+end
+
+function frameParse = parseFrame(frameIdx,frameBin)
+nChunk = ceil(length(frameIdx)/frameBin);
+frameParse = {};
+for i = 1:nChunk
+    if i~=nChunk; frameParse{i} = frameIdx(frameBin*(i-1)+1:frameBin*i);
+    else; frameParse{i} = frameIdx(frameBin*(i-1)+1:length(frameIdx));
+    end
+end
 end

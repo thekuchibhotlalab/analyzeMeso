@@ -22,7 +22,7 @@ end
 tempPSTH = nanmean(dffStim(sortIdx,:,p.Results.selFlag),3); 
 imagesc(p.Results.xaxis, p.Results.yaxis, tempPSTH); 
 try
-    clim([-prctile(tempPSTH(:),98.5), prctile(tempPSTH(:),98.5)]); 
+    clim([prctile(tempPSTH(:),1.5), prctile(tempPSTH(:),98.5)]); 
 catch 
     disp('Check number of trials selected, might have been all nans')
 end 
