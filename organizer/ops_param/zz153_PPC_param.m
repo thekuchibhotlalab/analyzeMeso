@@ -20,6 +20,9 @@ myOps.dayInterleave= [20240516,20240522];
 
 myOps.frameRate = 15; 
 myOps.trackingSessionSel = 107; 
+myOps.chunkDays = {[1 2 3],[4 5],[6 8 9],... % task 1 nniave learnig expert
+    [10 11 12],[13 14 15 16],[17 18 19],... % task 2 naive leanring expert 
+    [20 21]}; % interleaved 
 
 
 

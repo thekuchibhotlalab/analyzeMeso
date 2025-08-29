@@ -1,42 +1,175 @@
 %% load animal data
 clear; 
-tic; ani = Animal('zz153_PPC','spk'); ani = ani.getBehav; toc;
-tic; ani = ani.parseTrial; toc; ani = ani.parseDay;
+tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 
+%% load animal data
+clear; 
+tic; ani = Animal('zz159_PPC','actType','spk','tracking',true); 
 
-%% step 0.0 -- new session selection method
-[ishereDay,sessionCount,sessionSel] = ani.selTracking();
-ani = ani.parseDay('tracking');
-figure; subplot(1,2,1);
-plot(sessionCount); xline(ani.ops.trackingSessionSel);
-subplot(1,2,2); 
-daySel = unique(ani.sessionInfo.SessionDay(sessionSel{ani.ops.trackingSessionSel}));
-scatter(1:length(daySel),daySel);
+%% load animal data
+clear; 
+tic; ani = Animal('zz159_AC','actType','spk','tracking',true); 
 
-ani = fn_initialClustering(ani);
-%% step 0.1 -- do two-step clustering, this help us select 
+%% step 1.0 -- do two-step clustering, this help us select 
+ani = fn_initialClustering(ani,'secondCluster',false);
+trialTypeInfoChoice = ani.trialTypeInfo; 
+
+%% step 1.1 -- check stimulus evoked activity
+
+% reparse the activity to include miss trials
+selTime = 11:45; 
+[ani,~,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
+    [1,1,1,2,2,2,3,3,3,4,4,4],'choice',[1,2,0,1,2,0,1,2,0,1,2,0],'RTrange',[0.17 0.32]);
+
+%[~,~,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
+%    [1,1,1,2,2,2,3,3,3,4,4,4],'choice',[1,2,0,1,2,0,1,2,0,1,2,0],'RTrange',[0.17 0.32]);
+%% step 2.1 -- plot umap and spatial location of cluster
+clusterLabel = ani.analysis.initialClustering.labelTracked; nCluster = max(clusterLabel);
+clusterLabelAll = ani.analysis.initialClustering.labelAll; 
+
+figure;
+subplot(1,2,1);
+for i = 1:nCluster
+    scatter3(ani.analysis.initialClustering.proj(clusterLabel==i,1),...
+        ani.analysis.initialClustering.proj(clusterLabel==i,2),ani.analysis.initialClustering.proj(clusterLabel==i,3),'filled'); hold on;
+end 
+title(['Clustering based on clustering in' newline 'corr/incorr trials, umap projection']);
+
+roi = ani.sessionInfo.roi{5}(ani.ops.ishereAll);
+subplot(1,2,2); hold on;
+for i = 1:length(roi)
+    try
+        if clusterLabel(i)~=0; fill(roi{i}(:,2),roi{i}(:,1),matlabColors(clusterLabel(i)),'LineStyle','none');
+        else; fill(roi{i}(:,2),roi{i}(:,1),[0.8 0.8 0.8],'LineStyle','none');end 
+        catch; disp(i)
+    end 
+end
+set(gca, 'YDir', 'reverse');
+title('ROI location of neurons'); xlabel('P <---> A'); ylabel('V <---> D');
+
+%%
+tempAct = cellfun(@(x)(nanmean(x{1},3)+nanmean(x{4},3)), trialTypeInfoStim.dffStim,'UniformOutput',false);
+subplot(2,3,3); 
+imagesc(tempAct{3}(clusterLabel==1,:)); clim([0 prctile(tempAct{4}(:),99)]);
+title('Cluster 1 actvity')
+subplot(2,3,6);
+imagesc(tempAct{3}(clusterLabel==2,:)); clim([0 prctile(tempAct{4}(:),99)])
+title('Cluster 2 actvity')
+%% 2.2 -- Plot task 1 activity between clusters, using imagesc
+
+% Then plot task 2 activity 
+selDay = [1 2 3 4 5 6]; selType = 4; % stim 2, correct trials 
+figure;
+for i  = 1:length(selDay)
+    selAct = trialTypeInfoChoice.dffChoice{selDay(i)};
+    selAct = cellfun(@(x)(nanmean(x,3)),selAct,'UniformOutput',false); selAct = fn_cell2mat(selAct,3);% take only task 1 trial types
+    for j = 1:4
+        subplot_tight(length(selDay),4,j+(i-1)*4,[0.01 0.01]); hold on; % plot task 1
+        tempRT = nanmean(trialTypeInfoChoice.behSelTrialType{selDay(i)}{j}.RT);
+        xline(20.5,'Color',[0.8 0.8 0.8],'LineWidth',2)
+        xline(20-tempRT*15,'Color',[0.8 0.8 0.8],'LineWidth',2)
+        for k = 1:3
+            plot(nanmean(selAct(clusterLabel==k,:,j),1),'Color',matlabColors(k),'LineWidth',1.5); 
+            
+            %imagesc(selAct(clusterLabel==1,:,j+4)); hold on; 
+            clim([0 0.01]); yticks([]); xticks([])
+        end 
+        
+        
+        
+    end 
+
+end 
+
+%% 2.3 -- Plot task 1 activity between clusters, using plot mean
+
+% Then plot task 2 activity 
+selDay = [4 5 6]; % stim 2, correct trials 
+figure;
+for i  = 1:length(selDay)
+    selAct = trialTypeInfoChoice.dffChoice{selDay(i)};
+    selAct = cellfun(@(x)(nanmean(x,3)),selAct,'UniformOutput',false); selAct = fn_cell2mat(selAct,3);% take only task 1 trial types
+    for j = 1:4
+        subplot(length(selDay),4,j+(i-1)*4); % plot task 1
+        for k = 1:nCluster
+            plot(nanmean(selAct(clusterLabel==k,:,j+4),1),'Color',matlabColors(k)); hold on; 
+            xline(10.5)
+            %imagesc(selAct(clusterLabel==1,:,j+4)); hold on; 
+            clim([0 0.01]); title(['day ' int2str(i) ' trial type ' int2str(j)])
+        end 
+        
+    end 
+
+end
+
+
+%%
+ selType = 4;
+selWheel = trialTypeInfoChoice.wheelChoice{selDay}{selType}(21:45,:);
+selRT = trialTypeInfoChoice.behSelTrialType{selDay}{selType}.RT;
+
+selActAvg = squeeze(nanmean(nanmean(selAct,1),3));
+selWheel = selWheel - repmat(selWheel(1,:),[size(selWheel,1), 1]);
+selWheelAvg = nanmean(selWheel,2);
+figure; plot(selActAvg-selActAvg(1)); hold on; plot(-selWheelAvg*0.001-0.003)
+ylim([-0.005 0.01])
+
+figure; 
+for i = 1:49
+    subplot_tight(7,7,i,[0.01 0.01])
+    plot(nanmean(selAct(:,:,i),1)); hold on; plot(-selWheel(:,i)*0.001-0.003);
+    tempRT = 11 - 15*selRT(i); xline(tempRT);
+    xline(11); xticks([]); yticks([]); xlim([0 25])
+end 
 
 
 
-%% step 0.2 -- organize data, concatanate multi-trial-type, multi-day into  
-% 
-% [s2a1,selFlag21] = selTrialType(selAct, selBehav, 2, 1);
-% [s2a2,selFlag22] = selTrialType(selAct, selBehav, 2, 2);
-% [s1a1,selFlag11] = selTrialType(selAct, selBehav, 1, 1);
-% [s1a2,selFlag12] = selTrialType(selAct, selBehav, 1, 2);
-% 
-% [s4a1,selFlag21] = selTrialType(selAct, selBehav, 4, 1);
-% [s4a2,selFlag22] = selTrialType(selAct, selBehav, 4, 2);
-% [s3a1,selFlag11] = selTrialType(selAct, selBehav, 3, 1);
-% [s3a2,selFlag12] = selTrialType(selAct, selBehav, 3, 2);
-% 
-% tempRT = cellfun(@(x)(x.RT),selBehav,'UniformOutput',false);
-% [rt21,selFlag21] = selTrialType(tempRT, selBehav, 2, 1);
-% [rt22,selFlag22] = selTrialType(tempRT, selBehav, 2, 2);
-% 
-% [rt41,selFlag21] = selTrialType(tempRT, selBehav, 4, 1);
-% [rt42,selFlag22] = selTrialType(tempRT, selBehav, 4, 2);
 
-% %% check dPCA
+%% step 1.3 -- check location of clustered neurons
+
+roi = ani.sessionInfo.roi{33}(ani.ops.ishereAll);
+
+figure; 
+
+subplot(2,2,2); clusterNum = max(clusterLabel);
+selDay = 7; selType = 6; % miss trial
+selAct = nanmean(ani.trialTypeInfo.dffStim{selDay}{9},3)+...
+    nanmean(ani.trialTypeInfo.dffStim{selDay}{12},3);
+for i = 1:clusterNum
+
+    plot(nanmean(nanmean(selAct(clusterLabel==i,:,:),1),3)); hold on; 
+
+end 
+xline(20.5)
+
+subplot(2,2,1); hold on;
+% miss trial, sum of Tone 1 and tone 2
+selAct = nanmean(ani.trialTypeInfo.dffStim{selDay}{9},3)+nanmean(ani.trialTypeInfo.dffStim{selDay}{12},3);
+selActTone = selAct(:,22) - selAct(:,19); % seleect the peak activity
+selActTone = selActTone / prctile(selActTone(:),99); % normalize to 1
+for i = 1:length(roi)
+    try
+        fill(roi{i}(:,1),roi{i}(:,2),matlabColors(1,selActTone(i)),'LineStyle','none');
+    catch
+        disp(i)
+    end
+end 
+title('Tone-evoked activity');
+
+selAct1 = nanmean(ani.trialTypeInfo.dffStim{selDay}{1}(:,12,:),3);
+selAct2 = nanmean(ani.trialTypeInfo.dffStim{selDay}{4}(:,12,:),3);
+selIdx = round(((selAct2-selAct1) ./ (selAct2+selAct1) *128)+128);
+selIdx(selIdx<=0) = 1; selIdx(selIdx>256) = 256;
+subplot(2,2,4); hold on;
+rbmap = redblue;
+for i = 1:length(roi)
+    try
+        fill(roi{i}(:,1),roi{i}(:,2),rbmap(selIdx(i),:),'LineStyle','none');
+    catch
+        disp(i)
+    end
+end 
+title('Selectivity of tone 1 vs tone 2');
+%% check dPCA
 % 
 % selDay = 6; 
 % matS1 = cat(3,nanmean(s1a1{selDay},3),nanmean(s1a2{selDay},3) );

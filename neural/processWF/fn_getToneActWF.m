@@ -2,8 +2,9 @@ function [imgBaselineAvg,imgPresAvg] = fn_getToneActWF(filename, roiOps)
 
 %tiffPath = 'D:\labData\2pData_meso\zz129';
 %fileName = 'zz128_AC_00001.tif';
-%roiSize = [550 1000]; nROI = 2; roiPos = [1;2];  tempFrame = [2 2 200];
-%imgFOV = fn_getFOV(tiffPath,fileName,tempFrame,roiSize,roiPos,nROI);
+%roiOps.nROI = 6;
+%roiOps.ylen = 200;
+%roiOps.roiPos = [1 2 3 4 5 6]
 
 % tone ID
 tone = [45254.834 8000 13454.34264 4756.82846 5656.854249,...
@@ -51,15 +52,13 @@ end
 imgPresAvg = fn_cell2mat(cellfun(@(x)(mean(fn_cell2mat(x,3),3)),imgPres,'UniformOutput',false),3);
 imgBaselineAvg = fn_cell2mat(cellfun(@(x)(mean(fn_cell2mat(x,3),3)),imgBaseline,'UniformOutput',false),3);
 
-
-
 imgPresAvg = imgPresAvg(:,:,toneindex); imgBaselineAvg = imgBaselineAvg(:,:,toneindex);
 imgBaselineAvgRep = repmat(nanmean(nanmean(imgBaselineAvg,1),2),[size(imgBaselineAvg,1) size(imgBaselineAvg,2) 1]); 
 imgBaselineF = mean(imgBaselineAvg,3); 
 imgPresDff = (imgPresAvg-imgBaselineAvg )./imgBaselineAvgRep * 100;
 %imgBaselineF(imgBaselineF<0) = 0; imgBaselineF = imgBaselineF+20;
 for i = 1:length(tone)
-    K = (1/1600)*ones(40,40);
+    K = (1/(6*42))*ones(6,42);
     temp = conv2(imgPresDff(:,:,i),K,'same');
     imgPresDff(:,:,i) = (temp - mean(temp(:))) ./ max(temp(:));
 end 
@@ -78,11 +77,11 @@ imgPresDffNorm = normFactor ./ repmat(nansum(normFactor,3),[1 1 length(tone)]);
 toneMapAvg = nansum(imgPresDffNorm .* repmat(toneMultiply,[size(imgPresDff,1) size(imgPresDff,2) 1]),3);
 figure; imagesc(toneMapAvg); colorbar
 
-K = (1/720)*ones(120,6);
+K = (1/(6*42))*ones(6,42);
 tempImg = conv2(mean(imgPresAvg,3)-mean(imgBaselineAvg,3),K,'same');
 figure; imagesc(tempImg);colormap gray; clim([-3 3]);
 
-
+figure; imagesc(nanmean(imgBaselineAvg,3)); colormap gray; clim([0 1000])
 %imgFOV = fn_getFOV(tiffPath,fileName,[tempFrameStart nChan tempFrameStart+nFramesPerTrial-2],roiSize,roiPos,nROI);
 %tempImg = mean(imgFOV,3);
 %figure; imagesc(tempImg');colormap gray; clim([0 prctile(tempImg(:),99)]);

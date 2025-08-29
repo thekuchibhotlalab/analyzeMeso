@@ -1,0 +1,524 @@
+%% load animal data
+
+tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 
+%% load animal data
+
+tic; ani2 = Animal('zz159_PPC','actType','spk','tracking',true); 
+
+%% step 1.1 -- check stimulus and chocie evoked activity
+
+% reparse the activity to include miss trials
+ani = fn_initialClustering(ani,'secondCluster',false);
+trialTypeInfoChoice = ani.trialTypeInfo; 
+
+selTime = 11:45; 
+[ani,chunkedDayInfo,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','wheelStim','dffChoice','wheelChoice','behSel'},'selTime',selTime,'stim',...
+    [1,1,2,2,3,3,4,4],'choice',[1,2,1,2,1,2,1,2],'trialSelCriteria','none');
+
+
+%% find neurons over the full course of learning
+selFlag = ani.analysis.initialClustering.labelTracked==1;
+[ani, idxSorted, changeVals, perNeuronPeriodVals] = fn_findNeuronEvo(ani,'neuronMask',selFlag,'timeWindow',21:23); 
+[ani, metrics,details] = fn_findTaskSelectiveNeuron(ani,'neuronMask',selFlag, 'timeWindow',22, 'baselineWindow',17:19,...
+    'periodIdx',7,'detrendWin',15);
+figure; scatter(metrics.respIndex,metrics.discIndexAbs_dprime)
+
+%[ani, idxSorted, changeVals, perNeuronPeriodVals] = fn_findNeuronEvo(ani,'periodIdx',[3 4 5 6],'trialTypeIdx',[5 8],...
+%    'neuronMask',selFlag,'timeWindow',22:24); 
+
+%plotIdx = idxSorted(1:15);
+
+
+fn_plotNeuronByPeriod(ani,metrics.discIndexSigned_SI>0.4,'sameAxis',true,'zscore',true);
+fn_plotNeuronByPeriod(ani,metrics.discIndexSigned_SI<-0.4,'sameAxis',true,'zscore',true);
+fn_plotNeuronByPeriod(ani,metrics.discIndexSigned_SI>-0.4 & metrics.discIndexSigned_SI<0.4,'sameAxis',true,'zscore',true);
+
+%% plot individual plots
+[temp,plotIdx1] = sort(metrics.discIndexSigned_SI,'ascend');
+plotIdx2 = find((metrics.discIndexSigned_SI)>0.2);
+for i = 1:10
+    fn_plotNeuronByPeriod(ani,plotIdx1(i),'sameAxis',true);
+end
+%%
+selFlagIdx = find(selFlag);
+for i = 1:length(selFlagIdx)
+    fn_plotNeuronByPeriod(ani,selFlagIdx(i),'sameAxis',true);
+    set(gcf, 'units', 'normalized');
+    set(gcf, 'outerposition', [0.1 0.1 0.9 0.9]); 
+    saveas(gcf,['neuron ' int2str(selFlagIdx(i)) '.png']);
+    close(gcf);
+end
+%% plot neurons in one period
+fn_plotNeuronOnePeriod(ani,{selFlag,plotIdx1,plotIdx2},'periods',7,'sameAxis',true,'zscore',false);
+
+
+%% find neuron type
+scores = struct(); evoType=struct();
+types = {'increase','decrease','stable'}; 
+for i= 1:length(types)
+[ani, scores.task1(:,i), ~] = fn_findNeuronEvoCorr(ani,'metricType','response','task',1,'phase','T1',...
+    'pattern',types{i},'neuronMask',selFlag,'timeWindow',21:22,'baselineWindow',17:19, 'detrendWin',15);
+[ani, scores.task2(:,i), ~] = fn_findNeuronEvoCorr(ani,'metricType','response','task',2,'phase','T2',...
+    'pattern',types{i},'neuronMask',selFlag,'timeWindow',21:22,'baselineWindow',17:19, 'detrendWin',15);
+
+end 
+[~,evoType.task1] = max(scores.task1,[],2); evoType.task1(isnan(scores.task1(:,1))) = nan;
+[~,evoType.task2] = max(scores.task2,[],2); evoType.task2(isnan(scores.task2(:,1))) = nan;
+
+%% plo neural type
+for i = 1:length(types)
+    fn_plotNeuronByPeriod(ani,evoType.task2==i,'sameAxis',true,'zscore',false);
+end 
+
+
+%% plot label flow plot
+% Plot with fixed order and nice titles/colors
+
+figure; subplot(1,2,1);
+pie([sum(evoType.task1==1),sum(evoType.task1==2),sum(evoType.task1==3)],types); title('task1');
+subplot(1,2,2); pie([sum(evoType.task2==1),sum(evoType.task2==2),sum(evoType.task2==3)],types); title('task2');
+
+figure; subplot(1,2,1);
+pie([sum(evoType.task1==1),sum(evoType.task1==2),sum(evoType.task1==3)],{'More S1', 'More S2', 'stable'}); title('task1');
+subplot(1,2,2); pie([sum(evoType.task2==1),sum(evoType.task2==2),sum(evoType.task2==3)],{'More S1', 'More S2', 'stable'}); title('task2');
+
+SK = fn_plotLabelFlow(evoType.task1, evoType.task2, ...
+    'LeftPrefix','T1: ', 'RightPrefix','T2: ', ...
+    'LabelOrderL',[1 2 3], 'LabelOrderR',[1 2 3], ...
+    'MissingPolicy','drop', ...
+    'MinCount',0, ...
+    'Title','T1 → T2');
+%% plot the expTone in tuning sessino
+session1 = 3;
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',2,1,{evoType.task1==1,evoType.task1==2,evoType.task1==3,~selFlag});
+figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
+legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('d prime'); xlim([-2 2])
+
+session1 = 49;%session1 = 82;
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',2,1,{evoType.task1==1,evoType.task1==2,evoType.task1==3,~selFlag});
+figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
+legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('d prime'); xlim([-2 2])
+
+%% plot the PT in the tuning session
+session1 = 3;
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',4,3,{evoType.task2==1,evoType.task2==2,evoType.task2==3,~selFlag});
+figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
+legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('D-prime between L vs. R tone'); xlim([-2 2])
+
+session1 = 49; %session1 = 82;
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',4,3,{evoType.task2==1,evoType.task2==2,evoType.task2==3,~selFlag});
+figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
+legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('D-prime between L vs. R tone'); xlim([-2 2])
+
+session1 = 166;
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',4,3,{evoType.task2==1,evoType.task2==2,evoType.task2==3,~selFlag});
+figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
+legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('D-prime between L vs. R tone'); xlim([-2 2])
+%%
+[TCout, peakAct,baseAct, peakIndex] = fn_getTuningAni(ani.sessionInfo.tuning{50}','tuningParamMesoPT');
+
+figure; subplot(1,4,1);
+temp1 = squeeze(TCout(:,3,ani.ops.ishereAll));
+temp2 = squeeze(TCout(:,7,ani.ops.ishereAll));
+plot(nanmean(temp1(:,evoType.task2==1),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==1),2)); 
+subplot(1,4,2);
+plot(nanmean(temp1(:,evoType.task2==2),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==2),2)); 
+subplot(1,4,3);
+plot(nanmean(temp1(:,evoType.task2==3),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==3),2));
+subplot(1,4,4);
+plot(nanmean(temp1(:,~selFlag),2)); hold on;  plot(nanmean(temp2(:,~selFlag),2));
+%%
+[TCout, peakAct,baseAct, peakIndex] = fn_getTuningAni(ani.sessionInfo.tuning{164}','tuningParamMesoPT_15rep');
+
+figure; subplot(1,4,1);
+temp1 = squeeze(TCout(:,3,ani.ops.ishereAll));
+temp2 = squeeze(TCout(:,7,ani.ops.ishereAll));
+plot(nanmean(temp1(:,evoType.task2==1),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==1),2)); 
+subplot(1,4,2);
+plot(nanmean(temp1(:,evoType.task2==2),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==2),2)); 
+subplot(1,4,3);
+plot(nanmean(temp1(:,evoType.task2==3),2)); hold on;  plot(nanmean(temp2(:,evoType.task2==3),2)); 
+subplot(1,4,4);
+plot(nanmean(temp1(:,~selFlag),2)); hold on;  plot(nanmean(temp2(:,~selFlag),2));
+%% step 1.2 -- check stimulus evoked activity
+baselineFrame = 1:5;
+peakFrame = 16:20;
+
+selFlag = ani.analysis.initialClustering.labelTracked==1;
+outmat = {};
+for i = 1:7
+    outmat{1}{i} = getPeakAct(trialTypeInfoStim.dffChoice{i}{1},peakFrame,baselineFrame,selFlag);
+    outmat{2}{i} = getPeakAct(trialTypeInfoStim.dffChoice{i}{4},peakFrame,baselineFrame,selFlag);
+    outmat{3}{i} = getPeakAct(trialTypeInfoStim.dffChoice{i}{5},peakFrame,baselineFrame,selFlag);
+    outmat{4}{i} = getPeakAct(trialTypeInfoStim.dffChoice{i}{8},peakFrame,baselineFrame,selFlag);
+end
+
+figure; 
+
+subplot(2,2,1);
+[corrmat,trialBoundaries] = plotCorrelation([outmat{1}(1:3) outmat{1}(4:6) outmat{1}(7) outmat{3}(7)],...
+    {'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+c= clim;
+subplot(2,2,3);
+imagesc(corr(squeeze(regParam_all(selFlag,3,:)))); clim(c);
+xticks(1:7);yticks(1:7)
+xticklabels({'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+yticklabels({'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+title('GLM weights correlation'); colorbar;
+subplot(2,2,2);
+[corrmat,trialBoundaries] = plotCorrelation([outmat{2}(1:3) outmat{2}(4:6) outmat{2}(7) outmat{4}(7)],...
+    {'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+c= clim;
+subplot(2,2,4);
+imagesc(corr(squeeze(regParam_all(selFlag,4,:)))); clim(c);
+xticks(1:7);yticks(1:7)
+xticklabels({'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+yticklabels({'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+title('GLM weights correlation');colorbar;
+
+
+figure;
+imagesc(squeeze(regParam_all(selFlag,3,:)))
+for i = 1:7
+    act = nanmean(outmat{2}{i},2);
+    reg = regParam_all(selFlag,4,i) + regParam_all(selFlag,6,i);
+    actRegCorr(i) = corr(act,reg);
+end 
+
+figure; subplot(1,2,1);
+histogram( nanmean(outmat{2}{1},2)); title('Distribution of mean stim-evoked response')
+subplot(1,2,2); histogram(regParam_all(selFlag,2,1)); title('Distribution of mean stim weights in GLM')
+
+figure; 
+scatter( nanmean(outmat{2}{1},2),regParam_all(selFlag,2,1)); title('Distribution of mean stim-evoked response')
+xx = xlim; yy = ylim; tempMin = min([xx,yy]); tempMax = max([xx,yy]); hold on; plot([tempMin tempMax],[tempMin tempMax],'Color',[0.8 0.8 0.8]);
+ title('GLM weight vs. neural'); xlabel('Avg. response'); ylabel('GLM weights')
+%% step 1.3 -- check high stimulus weight neurons
+
+selDay = 3;  selTrial = 4; selReg = 1; 
+
+a = nanmean(nanmean(abs(regParam_all(:,1:6,:)),2),3);
+regParam_norm = regParam_all ./ repmat(1,[1 size(regParam_all,2) size(regParam_all,3)]);
+regStim = regParam_norm(:,selReg,selDay);
+[regStimSorted,regStimSortIdx] = sort(regStim,'descend');
+
+
+selNeuron = 30;
+tempAct = cellfun(@(x)(squeeze(nanmean(x{selTrial}(regStimSortIdx(1:selNeuron),22,:),2))),trialTypeInfoStim.dffStim,'UniformOutput',false);
+
+figure;
+[corrMatrix,trialBoundaries] = plotCorrelation(tempAct,{'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+
+
+tempActPCA = cellfun(@(x)(squeeze(nanmean(x{selTrial}(:,22,:),2))),trialTypeInfoStim.dffStim,'UniformOutput',false);
+tempActPCA = fn_cell2mat(tempActPCA,2);
+
+tempActPCA = zscore(tempActPCA,0,2);
+tempActPCA = smoothdata(tempActPCA,2,'movmean',20);
+
+[coeff, score, latent, tsquared, explained, mu] = pca(tempActPCA(selFlag,:)');
+
+figure; subplot(1,2,1); 
+plot(cumsum(explained))
+subplot(1,2,2); 
+plot(score(:,1:5));
+
+nPC = 2;
+tempAct = cellfun(@(x)(x{selTrial}(selFlag,:,:)),trialTypeInfoStim.dffStim,'UniformOutput',false);
+selCell = find(coeff(:,nPC)>prctile(coeff(:,nPC),97) | coeff(:,nPC)<prctile(coeff(:,nPC),3));
+tempAct = cellfun(@(x)(squeeze(x(selCell,:,:))),tempAct,'UniformOutput',false);
+
+
+
+colors = parula; colors = colors(round(linspace(1,size(colors,1),length(tempActPlot))),: );
+figure; 
+tempTrialType = {[1 4], [5 8]};
+
+nNeuron = 87; 
+for i = 1:length(tempTrialType)
+    for k = 1:length(tempTrialType{i})
+        tempIdx = tempTrialType{i}(k);
+        tempActPlot = cellfun(@(x)(nanmean(x{tempIdx}(selFlag,:,:),3)),trialTypeInfoStim.dffStim,'UniformOutput',false);  
+
+        for j = 1:length(trialTypeInfoStim.dffStim)
+    
+            subplot(length(tempTrialType),length(tempActPlot),j + length(tempActPlot)*(i-1));
+            plot(smoothdata(tempActPlot{j}(nNeuron,:),'movmean',4)); hold on;
+            xline(20)
+             
+               
+             
+    
+        end 
+    end 
+end 
+
+tempAct = cellfun(@(x)(squeeze(x(:,22,:))),tempAct,'UniformOutput',false);
+
+figure; subplot(1,2,1);
+[corrMatrix,trialBoundaries] = plotCorrelation(tempAct,{'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+
+subplot(1,2,2);
+tempAct = cellfun(@(x)(x{8}(selFlag,:,:)),trialTypeInfoStim.dffStim,'UniformOutput',false);
+tempAct = cellfun(@(x)(squeeze(x(selCell,:,:))),tempAct,'UniformOutput',false);
+tempAct = cellfun(@(x)(squeeze(x(:,22,:))),tempAct,'UniformOutput',false);
+[corrMatrix,trialBoundaries] = plotCorrelation(tempAct,{'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+
+
+%%
+figure; 
+selNeuron = 10;
+tempAct = cellfun(@(x)(x{selTrial}(regStimSortIdx(1:selNeuron),:,:)),trialTypeInfoStim.dffStim,'UniformOutput',false);
+
+tempAct = fn_cell2mat(tempAct,3);
+for i = 1:selNeuron
+    temp = nanmean(squeeze(tempAct(i,:,:)),2);
+    plot(nanmean(temp,2),'Color',matlabColors(1,1-i*0.03)); hold on;
+end 
+temp = nanmean(nanmean(tempAct,1),3);
+plot(temp,'Color',matlabColors(1,1.5),'LineWidth',2); hold on;
+
+
+tempActCorr = squeeze(nanmean(tempAct(:,22:24,:),2));
+figure; imagesc(corr(tempActCorr)); clim([-0.1 0.6])
+%%
+selDay = 1; 
+
+%selFlag = ani.analysis.initialClustering.labelTracked==1; 
+preS1 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{1},peakFrame,baselineFrame,selFlag);
+preS2 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{4},peakFrame,baselineFrame,selFlag);
+
+selDay = 2; 
+postS1 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{1},peakFrame,baselineFrame,selFlag);
+postS2 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{4},peakFrame,baselineFrame,selFlag);
+
+selDay = 3; 
+postS11 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{1},peakFrame,baselineFrame,selFlag);
+postS22 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{4},peakFrame,baselineFrame,selFlag);
+
+selDay = 7; 
+postS111 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{1},peakFrame,baselineFrame,selFlag);
+postS222 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{4},peakFrame,baselineFrame,selFlag);
+
+selDay = 4; 
+preS3 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{5},peakFrame,baselineFrame,selFlag);
+preS4 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{8},peakFrame,baselineFrame,selFlag);
+selDay = 5; 
+postS3 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{5},peakFrame,baselineFrame,selFlag);
+postS4 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{8},peakFrame,baselineFrame,selFlag);
+selDay = 6; 
+postS33 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{5},peakFrame,baselineFrame,selFlag);
+postS44 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{8},peakFrame,baselineFrame,selFlag);
+selDay = 7; 
+postS444 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{8},peakFrame,baselineFrame,selFlag);
+postS333 = getPeakAct(trialTypeInfoStim.dffStim{selDay}{5},peakFrame,baselineFrame,selFlag);
+
+
+%%
+figure; imagesc(corr(preS2)); clim([0 0.4])
+
+
+[corrmat,trialBoundaries] = plotCorrelation({preS1,postS1,postS11,preS3,postS3,postS33,postS111,postS333},...
+    {'T1E','T1M','T1L','T2E','T2M','T2L','T1I','T2I'});
+
+tempS2 = cat(2,preS2,postS2,postS22,postS4,postS44,postS222,postS444);
+tempS1 = cat(2,preS1,postS1,postS11,postS3,postS33,postS111,postS333);
+
+figure; 
+subplot(1,2,1); imagesc(corr(tempS1)); clim([0 0.4])
+subplot(1,2,2); imagesc(corr(tempS2)); clim([0 0.4])
+
+%% plot RT comparison
+figure; selDay = 1; selTrial = [1 4 5 8];
+for i = 1:length(selTrial)
+    hold on;
+    fn_plotHistLine(trialTypeInfoStim.behSelTrialType{selDay}{selTrial(i)}.RT,'histCountArgIn',...
+        {0.5:0.1:2.5},'plotArgIn',{'Color',matlabColors(i)}); hold on;
+    xline(nanmean(trialTypeInfoStim.behSelTrialType{selDay}{selTrial(i)}.RT),'--','Color',matlabColors(i)); hold on
+end 
+xlabel('Response Time (s)'); ylabel('Frequency')
+
+
+figure; 
+for i = 1:length(selTrial)
+
+    subplot(2,length(selTrial),i)
+    plot(nanmean(trialTypeInfoStim.dffStim{selDay}{selTrial(i)}(selFlag,:,:),3)','Color',[0.8 0.8 0.8]); hold on;
+    plot(nanmean(nanmean(trialTypeInfoStim.dffStim{selDay}{selTrial(i)}(selFlag,:,:),3),1),'Color',[0 0 0],"LineWidth",2);
+    xline(20,'Color',[0 0 0]); title(['stim aligned, type=' int2str(selTrial(i))]); ylabel('spk'); xlabel('frame')
+    
+    subplot(2,length(selTrial),i+length(selTrial))
+    plot(nanmean(trialTypeInfoStim.dffChoice{selDay}{selTrial(i)}(selFlag,:,:),3)','Color',[0.8 0.8 0.8]); hold on;
+    plot(nanmean(nanmean(trialTypeInfoStim.dffChoice{selDay}{selTrial(i)}(selFlag,:,:),3),1),'Color',[0 0 0],"LineWidth",2);
+    xline(20,'Color',[0 0 0]); title(['choice aligned, type=' int2str(selTrial(i))]); ylabel('spk'); xlabel('frame')
+end 
+%%
+
+[k, k_opt] = fn_hierarchicalClusteringGetK(tempS2', 2:10,'ward','euclidean');
+[labels, Z] = fn_hierarchicalClustering(tempS2', k,'ward','euclidean' ); xticks([]);
+[~,sortIdx2] = sort(labels);
+
+[k, k_opt] = fn_hierarchicalClusteringGetK(tempS1', 2:10,'ward','euclidean');
+[labels, Z] = fn_hierarchicalClustering(tempS1', k,'ward','euclidean' ); xticks([]);
+[~,sortIdx1] = sort(labels);
+
+close all
+figure; 
+subplot(1,2,1); imagesc(corr(tempS1(:,sortIdx1))); clim([0 0.5])
+subplot(1,2,2); imagesc(corr(tempS2(:,sortIdx2))); clim([0 0.5])
+
+a = a - repmat(a(20,:),[size(a,1),1]);
+figure; imagesc(a')
+% conclusion: seems like just 'miss' trials are not good for analysis. lots
+% of movement still. pick slow reaction time with no movement early on
+
+
+
+
+%%
+function [peakF] = getPeakAct(mat,peakFrame,baselineFrame,selFlag)
+    if ~exist('selFlag'); selFlag = true(size(mat,1),1); end 
+    baselineF = squeeze(nanmean(mat(selFlag,baselineFrame,:),2));
+    peakF = squeeze(nanmean(mat(selFlag,peakFrame,:),2));
+    peakF = peakF-baselineF;
+end 
+
+function [corrMatrix,trialBoundaries] = plotCorrelation(sessionData,sessionLabels)
+    % analyzeNeuronCorrelation - Concatenate neural activity from multiple sessions,
+% compute neuron correlation, and visualize with percentile-based color scaling.
+%
+% INPUT:
+%   sessionData - cell array where each cell = [nNeurons x nTrials] for a session
+%
+% Features:
+%   ✓ Concatenate sessions along trials
+%   ✓ Compute neuron-neuron correlation
+%   ✓ Set color axis (caxis) using 5th and 95th percentile of off-diagonal values
+%   ✓ Draw gray solid xline and yline for session boundaries
+%
+% Example:
+%   data = {rand(50,10), rand(50,12), rand(50,8)};
+%   analyzeNeuronCorrelation(data);
+
+    % --------------------------
+    % 1. Input validation
+    % --------------------------
+    if ~iscell(sessionData)
+        error('Input must be a cell array of [nNeurons x nTrials] matrices.');
+    end
+
+    nSessions = numel(sessionData);
+    nNeurons = size(sessionData{1}, 1);
+
+    for i = 2:nSessions
+        if size(sessionData{i}, 1) ~= nNeurons
+            error('All sessions must have the same number of neurons.');
+        end
+    end
+
+    % --------------------------
+    % 2. Concatenate along trials (dim 2)
+    % --------------------------
+    concatData = [];
+    trialBoundaries = zeros(1, nSessions + 1);
+    trialBoundaries(1) = 1;
+    for i = 1:nSessions
+        concatData = [concatData, sessionData{i}]; %#ok<AGROW>
+        trialBoundaries(i+1) = size(concatData, 2) + 1; % next start index
+    end
+
+    tickPositions = (trialBoundaries(1:end-1) + trialBoundaries(2:end) - 1) / 2;
+
+    % --------------------------
+    % 3. Compute neuron correlation
+    % --------------------------
+    concatData = zscore(concatData,0,2);
+    corrMatrix = corr(concatData); % neurons as variables
+
+    % --------------------------
+    % 4. Compute percentiles for caxis (off-diagonal only)
+    % --------------------------
+    mask = ~eye(size(corrMatrix)); % logical mask for off-diagonal
+    offDiagVals = corrMatrix(mask);
+    pLow = prctile(offDiagVals, 10);
+    pHigh = prctile(offDiagVals, 99);
+
+    % --------------------------
+    % 5. Plot correlation matrix
+    % --------------------------
+    %figure;
+    imagesc(corrMatrix); hold on;
+    axis square;
+    colorbar;
+    clim([pLow pHigh]); % scale based on percentiles
+
+    xticks(make_ticks_unique(tickPositions));
+    yticks(make_ticks_unique(tickPositions));
+    xticklabels(sessionLabels);
+    yticklabels(sessionLabels);
+
+    title('Neural Correlation Across Sessions');
+    xlabel('Trials in learning');
+    ylabel('Trials in learning');
+
+    hold on;
+    for i = 2:nSessions
+        xline(trialBoundaries(i)-1.5, '-', 'Color', [0 0 0], 'LineWidth', 1.5); % gray solid
+        yline(trialBoundaries(i)-1.5, '-', 'Color', [0 0 0], 'LineWidth', 1.5); % gray solid
+    end
+    hold off;
+
+    fprintf('Concatenated %d sessions: total trials = %d, neurons = %d.\n', ...
+            nSessions, size(concatData, 2), nNeurons);
+    fprintf('Color axis: [%.2f, %.2f] (5th, 95th percentile of off-diagonal).\n', pLow, pHigh);
+
+    function adjusted = make_ticks_unique(tickPositions, epsilon)
+    if nargin < 2
+        epsilon = 0.01;  % default small offset
+    end
+
+    adjusted = tickPositions;
+    for i = 2:length(adjusted)
+        if adjusted(i) <= adjusted(i - 1)
+            adjusted(i) = adjusted(i - 1) + epsilon;
+        end
+    end
+end
+end
+
+function [selIndexOut] = plotTuning(ani,session, sessionParam,L,R,cellFlag)
+    [TCout, peakAct,baseAct, peakIndex,peakStd] = fn_getTuningAni(ani.sessionInfo.tuning{session}',sessionParam);
+    tempL = squeeze(TCout(:,L,ani.ops.ishereAll));
+    tempR = squeeze(TCout(:,R,ani.ops.ishereAll));
+
+
+    tempPeakL = peakAct(L,ani.ops.ishereAll);
+    tempPeakR = peakAct(R,ani.ops.ishereAll);
+    tempLSTD = peakStd(L,ani.ops.ishereAll);
+    tempRSTD = peakStd(R,ani.ops.ishereAll);
+
+    
+    %onsetFrame = 21:23; preFrame = 17:19;
+    %selR = nanmean(tempR(onsetFrame,:),1) - nanmean(tempR(preFrame,:),1);
+    %selL = nanmean(tempL(onsetFrame,:),1) - nanmean(tempL(preFrame,:),1);
+
+
+    %selIndex = (selL-selR) ./ (abs(selL)+abs(selR)); 
+    selIndex = (tempPeakL-tempPeakR)./ (tempLSTD/2+tempRSTD/2);
+    selIndexOut = {}; 
+
+    figure; 
+    for i = 1:length(cellFlag)
+        subplot(2,length(cellFlag),i);
+        plot(nanmean(tempL(:,cellFlag{i}),2)); hold on;  plot(nanmean(tempR(:,cellFlag{i}),2)); 
+        legend({'L tone','R tone'})
+        xline(10)
+        subplot(2,length(cellFlag)*2,(i-1)*2 + 1 + length(cellFlag)*2);
+        imagesc(tempL(:,cellFlag{i})'); hold on; xline(10); title('L tone')
+        subplot(2,length(cellFlag)*2,(i-1)*2 + 2 + length(cellFlag)*2);
+        imagesc(tempR(:,cellFlag{i})'); hold on; xline(10); title('R tone')
+
+        selIndexOut{i} = selIndex(cellFlag{i});
+    end 
+
+end 

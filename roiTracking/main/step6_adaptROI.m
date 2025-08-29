@@ -63,8 +63,15 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackR
         refImg_aligned = refImg_roiReference/65536;
         alignIdx1 = {};
         for a = 1:nDepth
-            [tempref, alignIdx1{a}] = fn_fastAlign(cat(3,suite2pImg,refImg_aligned(:,:,a)),'center');
-            refImg_aligned(:,:,a) = tempref(:,:,2);
+            tempSuite2pImg = suite2pImg; tempSuite2pImg(refImg_aligned(:,:,a)==0) = 0;
+            [tempref, alignIdx1{a}] = fn_fastAlign(cat(3,tempSuite2pImg,refImg_aligned(:,:,a)),'center');
+            if abs(alignIdx1{a}(2,1)) > 5 || abs(alignIdx1{a}(2,2)) > 5
+                disp(['abnormal alignment offset detect with depth = ' int2str(a)])
+                alignIdx1{a}(2,1) = 0; alignIdx1{a}(2,2) = 0;
+            else
+                refImg_aligned(:,:,a) = tempref(:,:,2);
+            end 
+            
         end
         roiCoordShift1 = {}; roiCenterShift1 = {};
         for a = 1:size(stackROI.centroidRedrawn,1)

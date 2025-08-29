@@ -2,7 +2,7 @@ function [roiMovies, reconstructedFOV] = fn_splitFOV(movie, roiOps)
     % Get number of ROIs and image size
     [yTotal,xLen, nFrames] = size(movie);
     nROI = roiOps.nROI;
-    yLen = roiOps.roiLen;
+    yLen = roiOps.ylen;
     
     if length(yLen) == 1; yLen = repmat(yLen,[1 nROI]); end 
     % Calculate the black strip width

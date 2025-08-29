@@ -1,5 +1,4 @@
-tic; ani = Animal('zz153_PPC','spk'); ani = ani.getBehav; toc;
-tic; ani = ani.parseTrial; toc; ani = ani.parseDay;
+tic; ani = Animal('zz159_PPC','actType','spk'); toc;
 
 %%
 ani.visualizePSTH();

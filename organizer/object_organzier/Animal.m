@@ -4,56 +4,78 @@ classdef Animal
         ops
         sessionInfo
         dayInfo
+        chunkedDayInfo
+        trialTypeInfo
         alignmentOps
         analysis
     end
 
     methods
-        function obj = Animal(id,actType)
-             obj.ID = id;
-             % Attempt to load options file: [ID '_param.m']
-             run([obj.ID '_param.m']);
-             obj.ops = myOps;
-             if ~exist('actType'); actType = 'dff'; end 
-             if isfield(obj.ops,'sessionInfoName') && isfile(obj.ops.sessionInfoName)
-                 load(obj.ops.sessionInfoName,'sessionInfo');
-                 obj.sessionInfo = sessionInfo;
-             else
-                 switch actType
-                     case 'dff'
-                         temp = load(obj.ops.TCname,'dff');
-                         actCell = temp.dff; clear temp;
-
-                     case 'spk'
-                         temp = load(obj.ops.spkname,'spk');
-                         actCell = temp.spk; clear temp;
-                 end 
-                 
-                 load(obj.ops.infoName,'sessionInfo','animalID');
-
-                 obj.sessionInfo = sessionInfo; 
-                 actCell = cellfun(@single,actCell,'UniformOutput',false);
-                 obj.sessionInfo.TC = actCell';
-                 
-                 obj.sessionInfo = dealExceptions(obj.sessionInfo,obj.ops.mouse);
-                 load(obj.ops.trackingName,'ishereFinal');
-                 if size(sessionInfo,1) == size(ishereFinal,1)
-                    for i = 1:size(sessionInfo,1); obj.sessionInfo.ishere{i} = ishereFinal(i,:);end
-                 else
-                    allDay = unique(sessionInfo.SessionDate);
-                    for i = 1:length(allDay)
-                        selDay = obj.sessionInfo.SessionDate == allDay(i);
-                        obj.sessionInfo.ishere(selDay) = {ishereFinal(i,:)};
-                    end 
-                 end 
-                 obj.alignmentOps = load([myOps.alignOpsPath filesep 'ops.mat'],'ops');
-                 obj.alignmentOps = obj.alignmentOps.ops; 
-
-                 cellFlag = cellfun(@(x)(nanmean(x,2)) > 0.4,obj.sessionInfo.ishere,'UniformOutput',true);
-                 obj.sessionInfo.goodTracking = cellFlag;
-                 obj.sessionInfo.TC(~cellFlag) = {[]};
+        function obj = Animal(id,varargin)
+            p = inputParser;
+            addParameter(p, 'actType', 'spk');
+            addParameter(p, 'parseTrial', true);
+            addParameter(p, 'parseDay', true);
+            addParameter(p, 'tracking', true);
+            parse(p, varargin{:});
+            obj.ID = id;
+            % Attempt to load options file: [ID '_param.m']
+            run([obj.ID '_param.m']);
+            obj.ops = myOps;
+            actType = p.Results.actType; 
+            if isfield(obj.ops,'sessionInfoName') && isfile(obj.ops.sessionInfoName)
+             load(obj.ops.sessionInfoName,'sessionInfo');
+             obj.sessionInfo = sessionInfo;
+            else
+             switch actType
+                 case 'dff'
+                     temp = load(obj.ops.TCname,'dff');
+                     actCell = temp.dff; clear temp;
+            
+                 case 'spk'
+                     temp = load(obj.ops.spkname,'spk');
+                     actCell = temp.spk; clear temp;
              end 
-
+             
+             load(obj.ops.infoName,'sessionInfo','animalID');
+            
+             obj.sessionInfo = sessionInfo; 
+             actCell = cellfun(@single,actCell,'UniformOutput',false);
+             obj.sessionInfo.TC = actCell';
+             
+             obj.sessionInfo = dealExceptions(obj.sessionInfo,obj.ops.mouse);
+             load(obj.ops.trackingName,'ishereFinal','roiFinal');
+             obj.alignmentOps = load([myOps.alignOpsPath filesep 'ops.mat'],'ops');
+             obj.alignmentOps = obj.alignmentOps.ops; 
+             if size(sessionInfo,1) == size(ishereFinal,1)
+                for i = 1:size(sessionInfo,1)
+                    obj.sessionInfo.ishere{i} = ishereFinal(i,:);
+                    obj.sessionInfo.roi{i} = roiFinal(i,:);
+                    obj.sessionInfo.offsetMap{i} = obj.alignmentOps.offsetMap(:,:,i);
+                end
+             else
+                allDay = unique(sessionInfo.SessionDate);
+                for i = 1:length(allDay)
+                    selDay = obj.sessionInfo.SessionDate == allDay(i);
+                    obj.sessionInfo.ishere(selDay) = {ishereFinal(i,:)};
+                    obj.sessionInfo.roi(selDay) = {roiFinal(i,:)};
+                    obj.sessionInfo.offsetMap(selDay) = {obj.alignmentOps.offsetMap(:,:,i)};
+                end 
+             end             
+             cellFlag = cellfun(@(x)(nanmean(x,2)) > 0.4,obj.sessionInfo.ishere,'UniformOutput',true);
+             obj.sessionInfo.goodTracking = cellFlag;
+             obj.sessionInfo.TC(~cellFlag) = {[]};
+            end 
+            obj = obj.getBehav;
+            
+            if p.Results.parseTrial; obj = obj.parseTrial(); end 
+            if p.Results.parseDay
+                if p.Results.tracking
+                    obj = obj.parseDay('tracking'); 
+                else
+                    obj = obj.parseDay(); 
+                end 
+            end 
         end
 
         function obj = getBehav(obj)
@@ -96,19 +118,22 @@ classdef Animal
 
             % match the wheel data with the correct session
             animalName = strsplit(obj.ID,'_'); animalName = animalName{1};
-            temp = load([obj.ops.behavPath filesep animalName '_wheelData.mat']);
-            wheelData = temp.sessionTable; clear temp; 
-            for i = 1:size(wheelData,1)
-                matchIdx = wheelData.SessionDate(i) == obj.sessionInfo.SessionDate;
-                matchNumIdx = wheelData.SessionNumber(i) == obj.sessionInfo.SessionNumber;
-                matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), obj.sessionInfo.SessionType, 'UniformOutput',true);
-                idx = find(matchIdx & matchTypeIdx & matchNumIdx);
-                if ~isempty(idx)
-                    obj.sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
-                    obj.sessionInfo.wheelTime(idx) = wheelData.wheelTime(i);
+            try
+                temp = load([obj.ops.behavPath filesep animalName '_wheelData.mat']);
+                wheelData = temp.sessionTable; clear temp; 
+                for i = 1:size(wheelData,1)
+                    matchIdx = wheelData.SessionDate(i) == obj.sessionInfo.SessionDate;
+                    matchNumIdx = wheelData.SessionNumber(i) == obj.sessionInfo.SessionNumber;
+                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), obj.sessionInfo.SessionType, 'UniformOutput',true);
+                    idx = find(matchIdx & matchTypeIdx & matchNumIdx);
+                    if ~isempty(idx)
+                        obj.sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
+                        obj.sessionInfo.wheelTime(idx) = wheelData.wheelTime(i);
+                    end 
                 end 
+            catch
+                disp('no wheel data detected')
             end 
-
         end
 
         function data = selData(obj,method, param)
@@ -123,8 +148,9 @@ classdef Animal
                     selectedIdx = fn_selSession(obj.sessionInfo, method, param);
             end 
             
-            data.TC = obj.TC{selectedIdx};
             data.sessionInfo = obj.sessionInfo(selectedIdx,:);
+            %data.TC = data.sessionInfo.TC{selectedIdx};
+
 
             [data.dffStimList, data.selectedBehList] = fn_parseTrial(Fnew, beh, Fops, behOps,'stim');
             [data.dffChoiceList, data.selectedBehList] = fn_parseTrial(Fnew, beh, Fops, behOps,'choice');
@@ -133,7 +159,7 @@ classdef Animal
         end 
 
         function obj = parseTrial(obj)
-            trimFrame = 100;
+            trimFrame = 100; trialStart = 30; 
             for j= 1:size(obj.sessionInfo,1)
                 behTable = table();
                 if ~isempty(obj.sessionInfo.TC{j}) & ~isempty(obj.sessionInfo.beh{j})
@@ -157,13 +183,20 @@ classdef Animal
                     behTable.RT = beh(:,6)-beh(:,5);
                     behTable.correct = beh(:,2)==beh(:,3) |  beh(:,2)==beh(:,3)+2;
                     behTable.miss = beh(:,3)==0;   
+                    behTable.stimFrame = beh(:,7);  
+                    behTable.choiceThreFrame = beh(:,8); 
+                    behTable.rewardFrame = beh(:,9); 
                     obj.sessionInfo.dffStim{j} = dffStim;
                     obj.sessionInfo.dffChoice{j} = dffChoice;
                     obj.sessionInfo.dffReward{j} = dffReward;
-                    obj.sessionInfo.wheelStim{j} = wheelStim;
-                    obj.sessionInfo.wheelChoice{j} = wheelChoice;
-                    obj.sessionInfo.wheelReward{j} = wheelReward;
+                    obj.sessionInfo.wheelStim{j} = wheelStim - repmat(wheelStim(trialStart,:),[size(wheelStim,1) 1]);
+                    obj.sessionInfo.wheelChoice{j} = wheelChoice - repmat(wheelChoice(trialStart,:),[size(wheelChoice,1) 1]);
+                    obj.sessionInfo.wheelReward{j} = wheelReward - repmat(wheelReward(trialStart,:),[size(wheelReward,1) 1]);
                     obj.sessionInfo.behSel{j} = behTable;
+                end 
+                % lastly, keep the tuning sessions that are not parsed by behavior
+                if any(strcmp(obj.sessionInfo.SessionType{j},{'PT','puretone','pureTone','expTone'}))
+                    obj.sessionInfo.tuning{j} = obj.sessionInfo.TC{j}';
                 end 
             end 
             obj.sessionInfo.TC = [];
@@ -183,7 +216,6 @@ classdef Animal
                 sessionSel = sort(sessionSel);
                 tempSessionInfo = obj.sessionInfo(sessionSel,:);
                 ishereAllSession = ishereAllSession{obj.ops.trackingSessionSel};
-
             else
                 tempSessionInfo = obj.sessionInfo; 
             end 
@@ -214,9 +246,10 @@ classdef Animal
                 tempHere = all(tempHere==1,1);
                 dayInfo.ishere{i} = tempHere;
                 dayInfo.isheresum{i} = sum(tempHere);
+                dayInfo.roi{i} = tempSessionInfo.roi{selDay(1)};
             end 
             if strcmp(trackingStr,'tracking')
-                for i = 1:size(dayInfo,1); dayInfo.ishereAll{i} = ishereAllSession; end 
+                obj.ops.ishereAll = ishereAllSession; 
             end 
             emptyFlag = cellfun(@isempty,dayInfo.dffStim); 
             dayInfo(emptyFlag,:) = [];
@@ -232,24 +265,26 @@ classdef Animal
         end 
 
         function groups = groupDates(obj, mode)
-            n = length(obj.Dates);
+            dates = obj.dayInfo.date; n = numel(dates);
             switch mode
                 case 'early'
-                    groups = obj.Dates(1:round(n/2));
+                    groups = dates(1:round(n/2));
                 case 'late'
-                    groups = obj.Dates(round(n/2)+1:end);
+                    groups = dates(round(n/2)+1:end);
                 otherwise
                     error('Unknown grouping mode');
             end
         end
 
         function [ishereSession,sessionCount,sessionSel] = selTracking(obj)
-            tempTracking = fn_cell2mat(obj.sessionInfo.ishere,1); 
-            avgOffset = squeeze(nanmean(nanmean(obj.alignmentOps.offsetMap,1),2))...
+            tempTrackingSession = fn_cell2mat(obj.sessionInfo.ishere,1); 
+            offsetMap = fn_cell2mat(obj.sessionInfo.offsetMap,3);
+
+            avgOffset = squeeze(nanmean(nanmean(offsetMap,1),2))...
                 - obj.alignmentOps.refStackSelLoc(4); 
             [~,sortIdx] = sort(abs(avgOffset),'ascend');
-            for k = 1:size(tempTracking,1)
-                temp = tempTracking(sortIdx(1:k),:);
+            for k = 1:size(tempTrackingSession,1)
+                temp = tempTrackingSession(sortIdx(1:k),:);
                 ishereSession{k} = all(temp,1);
                 sessionCount(k) = sum(ishereSession{k});
                 sessionSel{k} = sortIdx(1:k);
@@ -257,45 +292,38 @@ classdef Animal
             end 
         end 
 
-        function visualizePSTH(obj, stim,choice)
-            computePSTH(obj,'stim',stim,choice);
-            computePSTH(obj,'choice',stim,choice);
-           
-        end
-        
-        function [outmat,label,selFlag] = selTrialType(obj,varargin)
+        function [obj,selTable] = selNeuronTime(obj,varargin)
+            % selectVar: e.g. {'choice','behSel'}
+            % varargin:selProp, selTime, selNeuron
             p = inputParser;
-            addParameter(p, 'selProp', 'dayInfo');
-            addParameter(p, 'stim', [1,1,2,2,3,3,4,4]);
-            addParameter(p, 'choice', [1,2,1,2,1,2,1,2]);
-            addParameter(p, 'secondClusterSelect', 1);
+            addParameter(p, 'selProp', 'chunkedDayInfo');
+            addParameter(p, 'selNeuron', []);
+            addParameter(p, 'selTime', []);
+            addParameter(p, 'replace', false);
             parse(p, varargin{:});
 
-            inmat = obj.(p.Results.selProp);
-            stim = p.Results.stim; choice = p.Results.choice;
-            for i = 1:length(stim) 
-                selFlag = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i)), inmat.selBeh,'UniformOutput',false);
-                if size(inmat{1},3) == 1
-                    if size(inmat{1},2) ==1
-                        selmat = cellfun(@(x,y)(x(y)),inmat,selFlag,'UniformOutput',false);
-                    else
-                        selmat = cellfun(@(x,y)(x(:,y)),inmat,selFlag,'UniformOutput',false);
+            selTable = obj.(p.Results.selProp);
+            dffNames = {'dffStim','dffChoice'};
+            for i = 1:length(dffNames)
+                temp = [];
+                if any(strcmp(dffNames{i}, selTable.Properties.VariableNames))
+                    if ~isempty(p.Results.selNeuron) && ~isempty(p.Results.selTime)
+                        temp = cellfun(@(x)(x(p.Results.selNeuron,p.Results.selTime,:)),selTable.(dffNames{i}) ,'UniformOutput',false);
+                    elseif ~isempty(p.Results.selNeuron) && isempty(p.Results.selTime)
+                        temp = cellfun(@(x)(x(p.Results.selNeuron,:,:)),selTable.(dffNames{i}) ,'UniformOutput',false);
+                    elseif isempty(p.Results.selNeuron) && ~isempty(p.Results.selTime)
+                        temp = cellfun(@(x)(x(:,p.Results.selTime,:)),selTable.(dffNames{i}) ,'UniformOutput',false);
                     end 
-                else
-                    selmat = cellfun(@(x,y)(x(:,:,y)),inmat,selFlag,'UniformOutput',false);
+                    selTable.(dffNames{i}) = temp;       
                 end 
-                emptyFlag = [];
-                for k = 1:length(selmat)
-                    if ndims(selmat{k}) == 3 & size(selmat{k},3) <5; emptyFlag = [emptyFlag k]; end 
-                    if isempty(selmat{k}); emptyFlag = [emptyFlag k]; end 
-                end 
-                selmat(emptyFlag) = []; 
-                outmat{i} = fn_cell2mat(cellfun(@(x)(nanmean(x,3)),selmat,'UniformOutput',false),3);
-                label{i} = ['s' int2str(stim{i}) 'a' int2str(choice{i})]; 
             end 
-        end
+            if p.Results.replace; obj.(p.Results.selProp) = selTable; end
 
-        function outTable = chunkDays(obj,chunks,selectedVar)
+
+
+        end 
+      
+        function obj = chunkDays(obj,chunks,selectedVar)
             dataTable = obj.dayInfo;
             % Chunk a per-day table into larger aggregated table based on day groups
             % Inputs:
@@ -328,13 +356,13 @@ classdef Animal
                         innerVal = val{1};
                         if ischar(innerVal) || isstring(innerVal)
                             combined = {string(val)};
-                        elseif isnumeric(innerVal) & ndims(innerVal) == 3
+                        elseif isnumeric(innerVal) && ndims(innerVal) == 3
                             combined = cat(3, val{:});
-                        elseif isnumeric(innerVal) & ndims(innerVal) == 2
+                        elseif isnumeric(innerVal) && ismatrix(innerVal)
                             combined = cat(2, val{:});
-                        elseif isnumeric(innerVal) & ndims(innerVal) == 1
+                        elseif isnumeric(innerVal) && isscalar(innerVal) 
                             combined = cat(1, val{:});
-                        elseif istable(innerVal) & ndims(innerVal) == 2
+                        elseif istable(innerVal)
                             combined = cat(1, val{:});
                         elseif isstruct(innerVal)
                             disp(['Variable ' varNames{v} ' -- structures are not considered in the code!'])
@@ -346,13 +374,269 @@ classdef Animal
                         disp(['Variable ' varNames{v} ' -- structures are not considered in the code!'])
                     end            
                 end
-                
-           end
+            end
+            obj.chunkedDayInfo = outTable; 
+            obj.ops.chunkDays = chunks; 
         end 
-        function outTable = selTrackingAndChunkDaysByTrialType(obj)
-            obj = obj.parseDay('tracking');
+        
+        function [obj,trialTypeInfo] = selTrialType(obj,varargin)
+            p = inputParser;
+            addParameter(p, 'selProp', 'dayInfo');
+            addParameter(p, 'stim', []);
+            addParameter(p, 'choice', []);
+            addParameter(p, 'selectedVar', []);
+            addParameter(p, 'trialSelCriteria', 'none');
+            addParameter(p, 'trialStart', 30);
+            parse(p, varargin{:});
+
+            outmat = obj.(p.Results.selProp); selFlag= {};
+            if isempty(p.Results.selectedVar)
+                varNames = outmat.Properties.VariableNames;
+            else
+                if ismember(p.Results.selectedVar, outmat.Properties.VariableNames)
+                    varNames = p.Results.selectedVar;
+                else
+                    warning('Variable "%s" not found in table. Returning full table.', selectedVar);
+                    varNames = outmat.Properties.VariableNames;
+                end
+            end 
+            stim = p.Results.stim; choice = p.Results.choice; trialStart = p.Results.trialStart;
+            for i = 1:length(stim)
+                switch p.Results.trialSelCriteria
+    
+                    case 'none'
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i)), outmat.behSel,'UniformOutput',false);
+                    case 'RTfast'
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i) & x.RT>=0.17...
+                            & x.RT<=0.3), outmat.behSel,'UniformOutput',false);
+                    case 'RTslow'
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i) & x.RT>=0.5...
+                            & x.RT<=2.5), outmat.behSel,'UniformOutput',false);
+                    case 'stim'
+                        if isempty(p.Results.choice)
+                            selFlag{i} = cellfun(@(x)(x.stimuli==stim(i)), outmat.behSel,'UniformOutput',false);
+                        else
+                            selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i)), outmat.behSel,'UniformOutput',false);
+                        end 
+                        for k = 1:size(outmat.behSel,1)
+                            wheelPos = cat(1,diff(outmat.wheelStim{k},1,1),zeros(1,size(outmat.wheelStim{k},2)));
+                            wheelSum = nansum(abs(wheelPos(trialStart+1:trialStart+5,:)),1);
+                            noWheelTrialSel = wheelSum <= 5;
+                            selFlag{i}{k} = selFlag{i}{k} & noWheelTrialSel';
+                        end 
+                        
+
+                    
+    
+                    case 'choice'
+
+    
+                end
+            end 
+
+
+            for j = 1:length(varNames)
+                tempVar = outmat.(varNames{j});
+                if iscell(tempVar)
+                    newVar = cell(1,length(stim));
+                    for i = 1:length(stim)
+                         
+                        tempContent = tempVar{1}; 
+                        if isnumeric(tempContent)
+                            if ~isscalar(tempContent) && ndims(tempContent)==3
+                                newVar{i}= cellfun(@(x,y)(x(:,:,y)),tempVar,selFlag{i},'UniformOutput',false);
+                            elseif ~isscalar(tempContent) && ismatrix(tempContent)
+                                newVar{i}= cellfun(@(x,y)(x(:,y)),tempVar,selFlag{i},'UniformOutput',false);
+                            end 
+                        elseif islogical(tempContent)
+                        elseif istable(tempContent)
+                            newVar{i}= cellfun(@(x,y)(x(y,:)),tempVar,selFlag{i},'UniformOutput',false);
+                        elseif isstruct(tempContent)                       
+                        end 
+                    end 
+                    reshapeVar = {}; 
+                    for m = 1:length(newVar{1}); for n = 1:length(newVar); reshapeVar{m}{n} = newVar{n}{m}; end ;end
+                    if ~isempty(reshapeVar)
+                        if strcmp(varNames{j},'behSel'); outmat.('behSelTrialType') = reshapeVar';
+                        else; outmat.(varNames{j}) = reshapeVar'; end 
+                    end 
+                end 
+            end   
+            obj.trialTypeInfo = outmat;
+            trialTypeInfo = outmat;       
+        end   
+
+        function [obj,chunkedDayInfo,trialTypeInfo] = chunkDaysByTrialType(obj,selVar,varargin)
+            % selectVar: e.g. {'choice','behSel'}
+            % varargin: selTime, chunkDays,selProp,stim,choice
+            p = inputParser;
+            addParameter(p, 'chunkDays', obj.ops.chunkDays);
+            addParameter(p, 'selProp', 'chunkedDayInfo');
+            addParameter(p, 'stim', [1,1,2,2,3,3,4,4]);
+            addParameter(p, 'choice', [1,2,1,2,1,2,1,2]);
+            addParameter(p, 'selTime', []);
+            addParameter(p, 'trialSelCriteria', 'none');
+            parse(p, varargin{:});
+
+            trialStart = 30; if ~isempty(p.Results.selTime); trialStart = trialStart-p.Results.selTime(1)+1; end 
+            obj = obj.chunkDays(obj.ops.chunkDays,selVar);
+            obj = obj.selNeuronTime('selProp',p.Results.selProp,'selNeuron',obj.ops.ishereAll,'selTime',p.Results.selTime,'replace',true);
+            % also parse wheel time
+            if ismember('wheelStim',obj.chunkedDayInfo.Properties.VariableNames)
+                wheelStim = obj.chunkedDayInfo.wheelStim;
+                wheelStim = cellfun(@(x)(x(p.Results.selTime,:)),wheelStim,'UniformOutput',false);
+                obj.chunkedDayInfo.wheelStim = wheelStim;
+            end
+
+            if ismember('wheelChoice',obj.chunkedDayInfo.Properties.VariableNames)
+                wheelChoice = obj.chunkedDayInfo.wheelChoice;
+                wheelChoice = cellfun(@(x)(x(p.Results.selTime,:)),wheelChoice,'UniformOutput',false);
+                obj.chunkedDayInfo.wheelChoice = wheelChoice;
+            end
+
+            chunkedDayInfo = obj.chunkedDayInfo; 
+            [obj,trialTypeInfo] = obj.selTrialType('selProp',p.Results.selProp,'stim',p.Results.stim,'choice',p.Results.choice,...
+                'trialSelCriteria',p.Results.trialSelCriteria,'trialStart',trialStart);
+        end 
+    
+        function obj = buildGLM(obj)
+            nNeuron = size( obj.chunkedDayInfo.dffStim{1},1);
+            preTone = 10; 
+            % all use the choice-aligned dffbehSel
+            for day = 1:size(obj.chunkedDayInfo,1)
+                regParam = cell(nNeuron,1);
+                regRvalue = zeros(nNeuron,1);
+
+                behSel =  obj.chunkedDayInfo.behSel{day};
+                missFlag = behSel.choice==0;
+
+                behSel = behSel(~missFlag,:);
+                dff = obj.chunkedDayInfo.dffStim{day}(:,:,~missFlag); 
+                wheelStim = obj.chunkedDayInfo.wheelStim{day}(:,~missFlag); 
+
+                stim1Reg = zeros(size(wheelStim));
+                stim2Reg = zeros(size(wheelStim));
+                rewReg = zeros(size(wheelStim));
+                platformReg = zeros(size(wheelStim));
+                choice1ProgressReg = zeros(size(wheelStim));
+                choice2ProgressReg = zeros(size(wheelStim));
+                wheelReg = cat(1,diff(wheelStim,1,1),zeros(1,size(behSel,1)));
+
+                stim1Flag = behSel.stimuli==1; stim1Reg (preTone+1,stim1Flag) = 1;
+                stim2Flag = behSel.stimuli==2; stim2Reg (preTone+1,stim2Flag) = 1;
+             
+            
+                rewardFlag = find(~isnan(behSel.rewardFrame)); rewardFrame = behSel.rewardFrame - behSel.stimFrame+preTone+1;
+                for i = 1:length(rewardFlag)
+                    rewReg(rewardFrame(rewardFlag(i)),rewardFlag(i)) = 1;
+                    platformEndFrame = rewardFrame(rewardFlag(i))+30;
+                    platformEndFrame(platformEndFrame>size(platformReg,1)) = size(platformReg,1);
+                    platformReg(rewardFrame(rewardFlag(i)):platformEndFrame,rewardFlag(i)) = 1; 
+                end 
+
+                wheelRegL = wheelReg; wheelRegL(wheelReg<0) = 0; 
+                wheelRegR = wheelReg; wheelRegR(wheelReg>0) = 0; wheelRegR = abs(wheelRegR);
+                wheelRegChoiceL = wheelReg; wheelRegChoiceR = wheelReg;
+                for i = 1:size(wheelReg,2)
+                    choiceFrames = (preTone+1):(behSel.choiceThreFrame(i)-behSel.stimFrame(i)+preTone+2);
+                    if behSel.choice(i)==1
+                        wheelRegChoiceL(choiceFrames,i) = wheelRegL(choiceFrames,i);
+                    else
+                        wheelRegChoiceR(choiceFrames,i) = wheelRegR(choiceFrames,i);
+                    end 
+
+                end
+
+                stim1Reg = shiftReg(stim1Reg,0,4);
+                stim2Reg = shiftReg(stim2Reg,0,4);
+                wheelRegChoiceLShift = shiftReg(wheelRegChoiceL,-2,2);
+                wheelRegChoiceRShift = shiftReg(wheelRegChoiceR,-2,2);
+                wheelRegLShift = shiftReg(wheelRegL,-2,2);
+                wheelRegRShift = shiftReg(wheelRegR,-2,2);
+                rewRegShift = shiftReg(rewReg,-1,5);
+
+                regressorSet = cat(3,stim1Reg,stim2Reg,wheelRegChoiceLShift,wheelRegChoiceRShift,wheelRegLShift,wheelRegRShift,rewRegShift,platformReg);
+                regressorSetZ = reshape(regressorSet,size(regressorSet,1)*size(regressorSet,2),[]); 
+                regressorSetZ = zscore(regressorSetZ,0,1);regressorSetZ = reshape(regressorSetZ,size(regressorSet,1),size(regressorSet,2),[]); 
+                X = reshape(regressorSetZ, [], size(regressorSet,3)); 
+                intercepts = zeros(nNeuron,1);
+
+
+                for neuron = 1:nNeuron
+                    tic; disp(['Neuron ' int2str(neuron)]); 
+                    try
+                        Y = squeeze(double(dff(neuron,:,:)))*100; Y = Y + 1e-06; 
+                        % Choose distribution and link function:
+                        distribution = 'normal';   % 'normal', 'poisson', 'gamma'
+                        link = 'log';             % good for positive data
+                        
+                        opts = statset('MaxIter', 200); % or lower, e.g., 1e3
+                        % Regularization: use lassoglm
+                        [beta, fitinfo] = lassoglm(X, Y(:), distribution, ...
+                            'Link', link, ...
+                            'Alpha', 1, ...      % 1 = Lasso (L1), 0 = Ridge (L2), between = Elastic Net
+                            'Lambda', 1e-02, ...  % Regularization path
+                            'CV', 10,'Options', opts);           % 10-fold cross-validation
+                        toc;
+                        % Get the best model:
+                        idxLambdaMinDeviance = fitinfo.IndexMinDeviance;
+                        bestBeta = beta(:, idxLambdaMinDeviance);
+                        intercepts(neuron) = fitinfo.Intercept(idxLambdaMinDeviance);                        
+                        % Prediction:
+                        try
+                            yhat = glmval([intercepts(neuron); bestBeta], X, link);
+                            yhat = reshape(yhat,size(dff,2),size(dff,3));
+                        catch
+                            disp(['Neuron fit not great' int2str(neuron)])
+    
+                        end
+                        regParam{neuron} = bestBeta;
+                        regRvalue(neuron) = corr(Y(:),yhat(:));
+                    catch
+                        disp(['Neuron fit failed' int2str(neuron)])
+                    end
+                end 
+                save(['GLMFit_day' int2str(day) '.mat'],'regParam','intercepts','regRvalue');
+            end 
+            
+            function newReg = shiftReg(reg,shiftStart,shiftEnd)
+                nReg = shiftStart:shiftEnd;
+                newReg = nan(size(reg,1),size(reg,2),length(nReg));
+                for k = 1:length(nReg)
+                    newReg(:,:,k) = circshift(reg,nReg(k),1);
+                end 
+
+            end 
         end 
 
+        function visualizePSTHcluster(obj)
+            clusterFlag = obj.analysis.initialClustering.label(obj.ops.ishereAll);
+            clusterFlag2 = obj.analysis.secondClustering.label(obj.ops.ishereAll);
+            tempData = obj.trialTypeInfo.dffStim;
+
+            plotIdx = [1 4 5 8];
+            figure; 
+            for k =1:4
+                for i = 1:length(plotIdx)
+                    subplot(4,length(plotIdx),i+(k-1)*4); 
+                    for j = 1:length(tempData)
+                        plot(nanmean(nanmean(tempData{j}{plotIdx(i)}(clusterFlag2==k,:,:),1),3)); hold on; 
+                    end 
+                    legend({'T1-1','T1-2','T1-3','T2-2','T2-3','T1T2'})
+                end
+            end 
+            
+
+
+        end 
+
+        function visualizePSTH(obj, stim,choice, varargin)
+            p = inputParser; addParameter(p,'missFlag',false); addParameter(p,'closeupFlag',false); parse(p,varargin{:});
+
+            % this is the old day-by day code to look at the PSTH
+            computePSTH(obj,'stim',stim,choice,p.Results.missFlag,p.Results.closeupFlag);
+            computePSTH(obj,'choice',stim,choice,p.Results.missFlag,p.Results.closeupFlag);    
+        end
 
     end
 end

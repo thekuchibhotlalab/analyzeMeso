@@ -1,0 +1,49 @@
+%%
+reglabels = {'stim1', 'stim2', 'moveL', 'moveR', 'moveLchoice', 'moveRchoice', 'reward', 'cupPosition'};
+days = [1 2 3 4 5 6 7];
+regParam_all = {};
+for i = 1:length(days)
+    load(['GLMFit_day' int2str(i) '.mat'])
+    regParam = fn_cell2mat(regParam,2)';
+    regressorAvgIdx = {1:5,6:10,11:15,16:20,21:25,26:30,31:37,38};
+    avgParam = cellfun(@(x)(nanmean(regParam(:,x),2)),regressorAvgIdx,'UniformOutput',false);
+    avgParam = fn_cell2mat(avgParam,2);
+    [~,sortIdx] = sort(avgParam(:,2),'descend');
+    figure; subplot(1,4,1);imagesc(regParam(sortIdx,:)); clim([-0.3 0.3])
+    subplot(1,4,2);imagesc(avgParam(sortIdx,:)); clim([-0.15 0.15]); xticks(1:8); xticklabels(reglabels)
+    [~,sortIdx] = sort(avgParam(:,6),'descend');
+    subplot(1,4,3);imagesc(avgParam(sortIdx,:)); clim([-0.15 0.15]); xticks(1:8); xticklabels(reglabels)
+    [~,sortIdx] = sort(avgParam(:,7),'descend');
+    subplot(1,4,4);imagesc(avgParam(sortIdx,:)); clim([-0.15 0.15]); xticks(1:8); xticklabels(reglabels)
+
+end 
+
+%% plot the regressor weights by cluster
+
+for i = 1:length(days)
+    load(['GLMFit_day' int2str(i) '.mat'])
+    regParam = fn_cell2mat(regParam,2)';
+    regressorAvgIdx = {1:5,6:10,11:15,16:20,21:25,26:30,31:37,38};
+    
+    figure; 
+    for j = 1:2
+        avgParam = cellfun(@(x)(nanmean(regParam(:,x),2)),regressorAvgIdx,'UniformOutput',false);
+        avgParam = fn_cell2mat(avgParam,2);
+    
+        avgParam = avgParam(ani.analysis.initialClustering.labelTracked==j,:);
+
+        [~,sortIdx] = sort(avgParam(:,6),'descend');
+        subplot(1,2,j);imagesc(avgParam(sortIdx,:)); clim([-0.15 0.15]); xticks(1:8); xticklabels(reglabels)
+        
+    end 
+end 
+
+%%
+regR_all = {};
+for i = 1:length(days)
+    load(['GLMFit_day' int2str(i) '.mat']);
+    regR_all{i} = regRvalue;
+end 
+regR_all = fn_cell2mat(regR_all,2);
+figure; histogram(regR_all(ani.analysis.initialClustering.labelTracked==1,:))
+

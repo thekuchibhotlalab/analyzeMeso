@@ -1,5 +1,3 @@
-global nPlanes
-
 % -------------- Label of Sounds in the Protocol ---------------------
 % ONLY toneLabel and toneindex matters here in this function
 % Toneindex sort the tones according to whatever way you want
@@ -18,22 +16,22 @@ toneindex = [9;4;5;12;2;10;16;3;11;13;6;14;15;17;1;8;7];
 
 % ----------------- Tone Presentation Protocol ---------------------
 nTones = length(tone);
-nTrials = 10;
-nFramesPerTone = 40/nPlanes; % 50
+%nTrials = 10;
+nFramesPerTone = 40; % 50
 nFramesPerTrial = nFramesPerTone * nTones; % 850
 startTrial = 1; % the first tone is on frame 0
-nFrames = nFramesPerTrial*nTrials; % 4250
-frameRate = 15.03/nPlanes; % in the future, do not hard code this.
+%nFrames = nFramesPerTrial*nTrials; % 4250
+frameRate = 15.03; % in the future, do not hard code this.
 % ----------------- Tone Presentation Protocol ---------------------
 pretoneFrames = 10;
 baselineFrames = 5;
 
-toneOnset = 8/nPlanes;
+toneOnset = 8;
 peakFrameBin = ceil(0.66 * frameRate);
 
 % --------------- Method of Calculating Dff and Smoothing Data-----------------------
 % If smoothArg NOT DECLARED, TC will NOT be smoothed (e.g. DECONNVOLVED SPIKE DATA)
-smoothWindow = 5; smoothArg = {'gaussian',smoothWindow};
+smoothWindow = 3; smoothArg = {'movmean',smoothWindow};
 % If dffArg is NOT DECLARED, Dff will NOT be calculated (e.g. DECONNVOLVED SPIKE DATA)
 % IF dffArg = {}, then the default method of dff is used (rolling median of 1000)
 dffArg = {'method', 'movMean','dffWindow',2000,'baselineCorrectionPostDff',...
