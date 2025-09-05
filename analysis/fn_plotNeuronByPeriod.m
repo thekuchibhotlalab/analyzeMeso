@@ -1,4 +1,4 @@
-function fn_plotNeuronByPeriod(obj, neuronIdx, varargin)
+function fn_plotNeuronByPeriod(T, neuronIdx, varargin)
 % Plot a given neuron's (or group's) mean activity (±SEM) over periods, by tasks.
 % Top row: Task 1 ([1 4]); Bottom row: Task 2 ([5 8]).
 % If neuronIdx is a vector/logical, plot group mean ± SEM across neurons.
@@ -32,7 +32,7 @@ addParameter(p,'useSEMInYLim',true);
 addParameter(p,'zscore',false);                 % <-- NEW
 parse(p,varargin{:});
 
-T = obj.trialTypeInfo.(p.Results.alignVar);  % {nPeriods×1}, each: {1×8}, inner: [nNeu × nTime × nTrials]
+%T = obj.trialTypeInfo.(p.Results.alignVar);  % {nPeriods×1}, each: {1×8}, inner: [nNeu × nTime × nTrials]
 assert(iscell(T) && ~isempty(T), 'trialTypeInfo.%s is empty; run chunkDaysByTrialType/selTrialType first.', p.Results.alignVar);
 
 nPeriods = numel(T);

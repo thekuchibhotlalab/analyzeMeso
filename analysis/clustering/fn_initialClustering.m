@@ -42,8 +42,8 @@ function [ani] = fn_initialClustering(ani,varargin)
     tempPlot = cat(3,selTrialType{:,4}); % plot rewarded stim 4
     for i = 1:clusterNum
         subplot(1,totalPlot,1+i);
-        plot(squeeze(nanmean(tempPlot(labels==i,:,:),1))); hold on; xlabel('time from choice reached'); xline(10); 
-        xticks([1 10 25]);xticklabels({'-0.66', '0','1'});
+        plot(squeeze(nanmean(tempPlot(labels==i,:,:),1))); hold on; xlabel('time from choice reached'); xline(20); 
+        xticks([5 20 35]);xticklabels({'-1', '0','1'});
     end 
 
     ishereIdx = find(ani.ops.ishereAll);

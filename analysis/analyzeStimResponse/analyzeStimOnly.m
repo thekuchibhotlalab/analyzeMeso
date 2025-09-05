@@ -3,7 +3,7 @@
 tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 
 %% load animal data
 
-tic; ani2 = Animal('zz159_PPC','actType','spk','tracking',true); 
+tic; ani = Animal('zz159_PPC','actType','spk','tracking',true); 
 
 %% step 1.1 -- check stimulus and chocie evoked activity
 
@@ -15,7 +15,141 @@ selTime = 11:45;
 [ani,chunkedDayInfo,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','wheelStim','dffChoice','wheelChoice','behSel'},'selTime',selTime,'stim',...
     [1,1,2,2,3,3,4,4],'choice',[1,2,1,2,1,2,1,2],'trialSelCriteria','none');
 
+%% regroup the periods, reduce neural response to a matrix over periods, + also reduce neural reponse over trial bins
+if ~isempty(trialTypeInfoStim.dffStim{3}{5})
+    for i = 5:8
+        trialTypeInfoStimStim.dffStim{4}{i} = cat(3,trialTypeInfoStim.dffStim{3}{i},trialTypeInfoStim.dffStim{4}{i});
+        trialTypeInfoStim.dffStim{3}{i} = [];
+    end   
+end 
+if ~isempty(trialTypeInfoStim.dffStim{4}{1})
+    for i = 1:4
+        trialTypeInfoStim.dffStim{5}{i} = cat(3,trialTypeInfoStim.dffStim{4}{i},trialTypeInfoStim.dffStim{5}{i},trialTypeInfoStim.dffStim{6}{i});
+        trialTypeInfoStim.dffStim{4}{i} = []; trialTypeInfoStim.dffStim{6}{i} = [];
+    end
+end 
 
+[Tz] = fn_zscoreTable(trialTypeInfoStim.dffStim, 'detrendWin', 15); 
+[respMat.mat, respMat.std, respMat.flag,respMat.dprime, respMat.info] = fn_reduceStimByPeriod(Tz, ...
+    'periodIdx', 1:7, 'trialTypes', [1 4 5 8], ...
+    'stimWindow', 21:22, 'baseWindow', 1:19, ...
+    'detrendWin', 15, ...
+    'zscoreAll',  false, ...
+    'frameAgg','sum', 'dprimeThresh', 0);
+
+tempFlagCount = squeeze(sum(sum(respMat.flag(:,:,:),2),3)); figure; histogram(tempFlagCount); xlabel('Total count of significant period'); ylabel('nNeuron')
+tempSel = tempFlagCount>=2; title(['selected neuron of n>=2 is ' int2str(sum(tempSel))])
+figure; imagesc(respMat.mat(tempSel,:))
+
+
+%% do PCA across periods
+selRespMat = respMat.mat(tempSel,:,:);
+tempSelIdx = find(tempSel);
+
+[weights, proj, explained] = fn_pcaNeuronEvo(selRespMat);
+
+figure; plot(cumsum(explained)); xlabel('nPC');ylabel('% var. exp')
+
+figure; imagesc(weights(:,1:5)); colorbar; title('PC1 loading map (P x K)');
+xlabel('trial type'); ylabel('period');
+
+figure; 
+fn_plotNeuronByPeriod(Tz,tempSelIdx(weights(:,3)<-0.1),'sameAxis',true);
+%% project weights back to table
+figure; 
+TzProj =  fn_projectTableOnWeights(Tz, weights);
+
+fn_plotNeuronByPeriod(TzProj,4,'sameAxis',true);
+%% correlation analysis in T2 
+
+tempL_T2 = cat(3,Tz{4}{5},Tz{5}{5},Tz{6}{5},Tz{7}{8}); tempL_T2 = squeeze(tempL_T2(:,22,:) - tempL_T2(:,20,:));
+tempL_T2_size = [size(Tz{4}{5},3),size(Tz{5}{5},3),size(Tz{6}{5},3),size(Tz{7}{8},3)]; 
+tempR_T2 = cat(3,Tz{4}{8},Tz{5}{8},Tz{6}{8},Tz{7}{8}); tempR_T2 = squeeze(tempR_T2(:,22,:) - tempR_T2(:,20,:));
+tempR_T2_size = [size(Tz{4}{8},3),size(Tz{5}{8},3),size(Tz{6}{8},3),size(Tz{7}{8},3)]; 
+
+tempL_T1 = nanmean(Tz{7}{1}(:,:,:),3); tempL_T1 =  squeeze(tempL_T1(:,22,:) - tempL_T1(:,20,:));
+tempR_T1 = nanmean(Tz{7}{4}(:,:,:),3); tempR_T1 =  squeeze(tempR_T1(:,22,:) - tempR_T1(:,20,:));
+
+tempR_T2 = smoothdata(tempR_T2,2,'movmean',50); tempCorr = [];
+for i = 1:size(tempR_T2,2); 
+    tempCorr(i) = corr(tempR_T1,tempR_T2(:,i)); 
+end 
+%figure; 
+%plot(tempCorr);xline(cumsum(tempR_T2_size));  hold on; 
+%plot(acc(1:4:end))
+
+tempL_T2 = smoothdata(tempL_T2,2,'movmean',50); tempCorr = [];
+for i = 1:size(tempL_T2,2); 
+    tempCorr(i) = corr(tempL_T1,tempL_T2(:,i)); 
+end 
+%figure; 
+%plot(tempCorr);xline(cumsum(tempL_T2_size)); hold on; 
+%plot(acc(1:4:end))
+
+
+
+tempDff = ani.chunkedDayInfo.dffStim;
+tempBeh = ani.chunkedDayInfo.behSel;
+tempDff = cat(3,tempDff{4:7}); tempBeh = cat(1,tempBeh{4:7});
+movingBin = 0:10:(size(tempBeh,1)-100); 
+corrVal = nan(2,length(movingBin)-1); acc = nan(1,length(movingBin)-1); bias = nan(1,length(movingBin)-1); corrValT2 = nan(1,length(movingBin)-1); 
+nPC = 5; pcProjL = nan(nPC,length(movingBin)-1);pcProjR = nan(nPC,length(movingBin)-1);
+
+for i = 1:length(movingBin)-1
+    tempBin = movingBin(i)+1:movingBin(i)+100;
+    tempDffBin = tempDff(:,:,tempBin);
+    tempBehBin = tempBeh(tempBin,:);
+
+    if sum(tempBehBin.stimuli==3 & tempBehBin.outcome==1)>4 && sum(tempBehBin.stimuli==4 & tempBehBin.outcome==1)>4
+        tempL = nanmean(tempDffBin(:,:,tempBehBin.stimuli==3 & tempBehBin.outcome==1),3);
+        tempL = tempL(:,22) - tempL(:,20);
+        pcProjL(:,i) = weights(:,1:nPC)' * tempL;
+    
+    
+        tempR = nanmean(tempDffBin(:,:,tempBehBin.stimuli==4 & tempBehBin.outcome==1),3);
+        tempR = tempR(:,22) - tempR(:,20);
+        pcProjR(:,i) = weights(:,1:nPC)' * tempR;
+
+
+
+        corrVal(:,i) = [corr(tempL_T1,tempL); corr(tempR_T1,tempR)];
+        corrValT2(:,i) = corr(tempL,tempR);
+        accL = sum(tempBehBin.stimuli==3 & tempBehBin.outcome==1)/sum(tempBehBin.stimuli==3);
+        accR = sum(tempBehBin.stimuli==4 & tempBehBin.outcome==1)/sum(tempBehBin.stimuli==4);
+        acc(i) = accL/2+accR/2; 
+        bias(i) = accL-accR; 
+    end 
+end 
+
+figure; plot(corrVal'); hold on; plot(acc);%plot(bias);
+title(['corr between beh and neural similarity=' num2str(corr(corrVal(2,:)',acc','rows','complete')/2+corr(corrVal(1,:)',acc','rows','complete')/2) newline ...
+    'corr between bias and neural similarity=' num2str(corr(corrVal(2,:)',bias','rows','complete')/2+corr(corrVal(1,:)',bias','rows','complete')/2) newline...
+    'corr between neural L vs.R =' num2str(corr(corrVal(1,:)',corrVal(2,:)','rows','complete'))]) 
+
+tempCorrL = corr(pcProjL',acc','rows','complete');
+tempCorrR = corr(pcProjR',acc','rows','complete');
+plotPC = 4; 
+[newProjL] = fn_matchScale(acc, pcProjL(plotPC,:));
+[newProjR] = fn_matchScale(acc, pcProjR(plotPC,:));
+figure; subplot(1,2,1); plot(newProjL); hold on; plot(acc); xlabel('Moving trial bin (10 trials)') 
+title(['corr between acc and (L)PC' int2str(plotPC) ' corr=' num2str(tempCorrL(plotPC))]);
+subplot(1,2,2); plot(newProjR); hold on; plot(acc); xlabel('Moving trial bin (10 trials)') 
+title(['corr between acc and (R)PC' int2str(plotPC) ' corr=' num2str(tempCorrR(plotPC))]);
+ 
+%% location of the PCs
+nPC = 3;
+tempWeight = weights(:,nPC) ./prctile(abs( weights(:,nPC)),99);
+roi = ani.sessionInfo.roi{5}(ani.ops.ishereAll);
+
+selIdx = round(tempWeight*128)+128;
+selIdx(selIdx<=0) = 1; selIdx(selIdx>256) = 256;
+rbmap = redblue;
+
+figure; hold on;
+for i = 1:length(roi)
+    fill(roi{i}(:,2),roi{i}(:,1),rbmap(selIdx(i),:),'LineStyle','none'); hold on;      
+end
+set(gca, 'YDir','reverse') 
 %% find neurons over the full course of learning
 selFlag = ani.analysis.initialClustering.labelTracked==1;
 [ani, idxSorted, changeVals, perNeuronPeriodVals] = fn_findNeuronEvo(ani,'neuronMask',selFlag,'timeWindow',21:23); 
@@ -90,11 +224,12 @@ SK = fn_plotLabelFlow(evoType.task1, evoType.task2, ...
     'Title','T1 → T2');
 %% plot the expTone in tuning sessino
 session1 = 3;
-selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',2,1,{evoType.task1==1,evoType.task1==2,evoType.task1==3,~selFlag});
+selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',2,1,{weights(:,5)<-0.06,weights(:,5)>0.06});
 figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
 legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('d prime'); xlim([-2 2])
-
-session1 = 49;%session1 = 82;
+%%
+%session1 = 49;
+session1 = 82;
 selIndexOut = plotTuning(ani,session1, 'tuningParamMesoExpTone',2,1,{evoType.task1==1,evoType.task1==2,evoType.task1==3,~selFlag});
 figure;  for i = 1:length(selIndexOut); cdfplot(selIndexOut{i}); hold on; end 
 legend(cat(2,types,'non-responsive'),'Location','Best'); xlabel('d prime'); xlim([-2 2])
