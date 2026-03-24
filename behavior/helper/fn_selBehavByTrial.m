@@ -1,4 +1,4 @@
-function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
+function [selBeh,trialSelFlag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
     global learningCurveBin;
     p = inputParser;
     addParameter(p, 'plot', true);
@@ -33,45 +33,41 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
          % GET DATA OVER THE WHOLE COURSE OF LEARNING
         case {'all'}
             daySplitFlag = cellfun(@length,daySplit);daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
-            [summaryStatT1, summaryStatT2,block,blockType] = makePlotInterleave(beh,daySplitFlag,p.Results.plot); 
+            [summaryStatT1, summaryStatT2,taskBlock] = makePlotInterleave(beh,daySplitFlag,p.Results.plot); 
             selBeh = beh;
-            varargout = {summaryStatT1, summaryStatT2,block,blockType};
-            flag = []; 
+            varargout = {summaryStatT1, summaryStatT2,taskBlock};
+            trialSelFlag = []; 
             
         % GET DATA FOR ONLY TASK 1
         case {'task1', 'task 1', 'Task1', 'Task 1'}
-            flag = fn_cell2mat(daySplit(task1Flag),1);
+            trialSelFlag = fn_cell2mat(daySplit(task1Flag),1);
             daySplitFlag = cellfun(@length,daySplit(task1Flag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
-            selBeh = beh(flag,:);
+            selBeh = beh(trialSelFlag,:);
             summaryStat = makePlotTask1(selBeh,daySplitFlag,p.Results.plot); 
             varargout{1} = summaryStat;
 
         % GET DATA FOR ONLY TASK 2
         case {'task2', 'task 2', 'Task2', 'Task 2'}
-            flag = fn_cell2mat(daySplit(task2Flag),1);
+            trialSelFlag = fn_cell2mat(daySplit(task2Flag),1);
             daySplitFlag = cellfun(@length,daySplit(task2Flag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
-            selBeh = beh(flag,:);
+            selBeh = beh(trialSelFlag,:);
             summaryStat = makePlotTask2(selBeh,daySplitFlag,p.Results.plot); 
             varargout{1} = summaryStat;
 
         % GET DATA FOR INTERLEAVED PERIOD
         case {'interleave', 'interleaved', 'Interleave', 'Interleaved'}
-            flag = fn_cell2mat(daySplit(interleaveFlag),1);
+            trialSelFlag = fn_cell2mat(daySplit(interleaveFlag),1);
             daySplitFlag = cellfun(@length,daySplit(interleaveFlag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
-            selBeh = beh(flag,:);
-            try
-                [summaryStatT1, summaryStatT2,block,blockType] = makePlotInterleave(selBeh,daySplitFlag,p.Results.plot); 
-            catch
-                summaryStatT1 = []; summaryStatT2 = []; block = [];blockType = [];
-            end
-            varargout = {summaryStatT1, summaryStatT2,block,blockType};
+            selBeh = beh(trialSelFlag,:);
+            [summaryStatT1, summaryStatT2,taskBlock] = makePlotInterleave(selBeh,daySplitFlag,p.Results.plot); 
+            varargout = {summaryStatT1, summaryStatT2,taskBlock};
 
         % GET DATA FOR TASK 1 RETRAINING, ONLY IF IT OCCURRED
         case {'retrain'}
             if ~isempty(task1retrain)
-                flag = fn_cell2mat(daySplit(task1retrain),1);
+                trialSelFlag = fn_cell2mat(daySplit(task1retrain),1);
                 daySplitFlag = cellfun(@length,daySplit(task1retrain));daySplitFlag = cumsum(task1retrain);daySplitFlag = daySplitFlag(1:end-1);
-                selBeh = beh(flag,:);
+                selBeh = beh(trialSelFlag,:);
                 makePlotRetrain(selBeh,daySplitFlag,p.Results.plot); 
             end 
     end
@@ -189,9 +185,9 @@ end
 
 end 
 
-function [summaryStatT1, summaryStatT2,block,blockTypes,varargout] = makePlotInterleave(beh,daySplitFlag,plotFlag)
+function [summaryStatT1, summaryStatT2,block,varargout] = makePlotInterleave(beh,daySplitFlag,plotFlag)
 global learningCurveBin;
-[parsedBlocks, blockTypes] = parseBlocksByTask(beh);
+[parsedBlocks, block.blockTypes, block.trialIndices] = parseBlocksByTask(beh);
 [block.bias,block.acc]= cellfun(@(x)(fn_getAccBias(x(:,5),x(:,7)==1,x(:,6)==0)),parsedBlocks);
 
 [bias1,acc1,~,~,~,~,~,arL1,arR1] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task1');
@@ -271,7 +267,7 @@ preLearningTrial = max([1 tempIdx-30]):min([tempIdx+30 size(beh,1)]);
     end 
 end 
 
-function [parsedBlocks, blockTypes] = parseBlocksByTask(dataMatrix)
+function [parsedBlocks, blockTypes, trialIndices] = parseBlocksByTask(dataMatrix)
 % Parses a [trials x features] data matrix into blocks based on day and block number,
 % then classifies each block by its task type based on the stimuli present.
 %
@@ -311,24 +307,24 @@ fprintf('Found %d unique blocks across %d unique days.\n', nBlocks, length(uniqu
 % --- Step 3: Initialize output cell arrays ---
 parsedBlocks = cell(nBlocks, 1);
 blockTypes = cell(nBlocks, 1);
-
+trialIndices = cell(nBlocks, 1);
 % --- Step 4: Loop through each unique block to parse and classify ---
 for i = 1:nBlocks
     % Find all row indices (trials) that belong to this block
-    trialIndices = find(groupIdx == i);
+    trialIndices{i} = find(groupIdx == i);
     
     % Extract all data for these trials from the original matrix
-    parsedBlocks{i} = dataMatrix{trialIndices, :};
+    parsedBlocks{i} = dataMatrix{trialIndices{i}, :};
     
     % Now, analyze the stimuli present in this block
     % We use 'unique' to get a list of all stimulus IDs in this block
-    stimuliInBlock = unique(stimRow(trialIndices));
+    stimuliInBlock = stimRow(trialIndices{i});
     
     % Check for the presence of Task 1 (stim 1 or 2)
-    hasT1 = any(ismember(stimuliInBlock, [1, 2]));
+    hasT1 = mean(ismember(stimuliInBlock, [1, 2]))>0.25;
     
     % Check for the presence of Task 2 (stim 3 or 4)
-    hasT2 = any(ismember(stimuliInBlock, [3, 4]));
+    hasT2 = mean(ismember(stimuliInBlock, [3, 4]))>0.25;
     
     % --- Step 5: Classify the block based on stimuli ---
     if hasT1 && hasT2
