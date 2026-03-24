@@ -30,15 +30,14 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
 
     % --- GATHER DATA FOR GIVEN QUERY
     switch criteria
-         % GET DATA OVER THE WHOLE COURSE OF LEARNING
-        case {'all'}
+        case {'all'} % GET DATA OVER THE WHOLE COURSE OF LEARNING
             daySplitFlag = cellfun(@length,daySplit);daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
             [summaryStatT1, summaryStatT2,block,blockType] = makePlotInterleave(beh,daySplitFlag,p.Results.plot); 
             selBeh = beh;
             varargout = {summaryStatT1, summaryStatT2,block,blockType};
             flag = []; 
             
-        % GET DATA FOR ONLY TASK 1
+         % GET DATA FOR ONLY TASK 1
         case {'task1', 'task 1', 'Task1', 'Task 1'}
             flag = fn_cell2mat(daySplit(task1Flag),1);
             daySplitFlag = cellfun(@length,daySplit(task1Flag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
@@ -46,7 +45,6 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
             summaryStat = makePlotTask1(selBeh,daySplitFlag,p.Results.plot); 
             varargout{1} = summaryStat;
 
-        % GET DATA FOR ONLY TASK 2
         case {'task2', 'task 2', 'Task2', 'Task 2'}
             flag = fn_cell2mat(daySplit(task2Flag),1);
             daySplitFlag = cellfun(@length,daySplit(task2Flag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
@@ -54,7 +52,6 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
             summaryStat = makePlotTask2(selBeh,daySplitFlag,p.Results.plot); 
             varargout{1} = summaryStat;
 
-        % GET DATA FOR INTERLEAVED PERIOD
         case {'interleave', 'interleaved', 'Interleave', 'Interleaved'}
             flag = fn_cell2mat(daySplit(interleaveFlag),1);
             daySplitFlag = cellfun(@length,daySplit(interleaveFlag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
@@ -65,8 +62,6 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
                 summaryStatT1 = []; summaryStatT2 = []; block = [];blockType = [];
             end
             varargout = {summaryStatT1, summaryStatT2,block,blockType};
-
-        % GET DATA FOR TASK 1 RETRAINING, ONLY IF IT OCCURRED
         case {'retrain'}
             if ~isempty(task1retrain)
                 flag = fn_cell2mat(daySplit(task1retrain),1);
@@ -78,9 +73,9 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
 end
 
 function summaryStat = makePlotTask1(beh,daySplitFlag,plotFlag)
-global learningCurveBin; 
+gloabl learningCurveBin; 
 
-[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task1');
+[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 
 [summaryStat.accPre, summaryStat.arPre, summaryStat.rtPre, summaryStat.accPost,...
     summaryStat.arPost, summaryStat.rtPost, summaryStat.biasPost] = fn_getStartEnd(beh,summaryStat.acc);
@@ -117,9 +112,9 @@ end
 end 
 
 function summaryStat = makePlotRetrain(beh,daySplitFlag,plotFlag)
-global learningCurveBin; 
+gloabl learningCurveBin; 
 
-[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task1');
+[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 summaryStat.ar = arL/2+arR/2;
 
 if plotFlag
@@ -152,9 +147,9 @@ end
 end 
 
 function summaryStat = makePlotTask2(beh,daySplitFlag,plotFlag)
-global learningCurveBin; 
+learningCurveBin = 450; 
 
-[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task2');
+[summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task2');
 
 [summaryStat.accPre, summaryStat.arPre, summaryStat.rtPre, summaryStat.accPost,...
     summaryStat.arPost, summaryStat.rtPost, summaryStat.biasPost] = fn_getStartEnd(beh,summaryStat.acc);
@@ -194,14 +189,14 @@ global learningCurveBin;
 [parsedBlocks, blockTypes] = parseBlocksByTask(beh);
 [block.bias,block.acc]= cellfun(@(x)(fn_getAccBias(x(:,5),x(:,7)==1,x(:,6)==0)),parsedBlocks);
 
-[bias1,acc1,~,~,~,~,~,arL1,arR1] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task1');
-[bias2,acc2,~,~,~,~,~,arL2,arR2] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task2');
-[bias3,acc3,~,~,~,~,~,arL3,arR3] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,learningCurveBin,'task3');
-tempT1 = beh.stimulus <=2; 
+[bias1,acc1,~,~,~,~,~,arL1,arR1] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
+[bias2,acc2,~,~,~,~,~,arL2,arR2] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task2');
+[bias3,acc3,~,~,~,~,~,arL3,arR3] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task3');
+tempT1 = beh(:,5) <=2; 
 [summaryStatT1.acc, summaryStatT1.ar, summaryStatT1.rt,summaryStatT1.bias] = fn_getStartEndInterleave(beh(tempT1,:),'task1');
-tempT2 = beh.stimulus >=3 & beh.stimulus <=4; 
+tempT2 = beh(:,5) >=3 & beh(:,5) <=4; 
 [summaryStatT2.acc, summaryStatT2.ar, summaryStatT2.rt,summaryStatT2.bias] = fn_getStartEndInterleave(beh(tempT2,:),'task2');
-%tempT3 = beh.stimulus >=5; 
+%tempT3 = beh(:,5) >=5; 
 %if ~isempty(tempT3)
 %    [summaryStatT3.acc, summaryStatT3.ar, summaryStatT3.rt,summaryStatT3.bias] = fn_getStartEndInterleave(beh(tempT3,:),'task3');
 %end
@@ -250,23 +245,23 @@ endIdx = tempEndIdx-tempBin/2:tempEndIdx+tempBin/2;
 
     function [accPre, arPre, rtPre,biasPre] = getAcc(beh, idx)
         tempBeh = beh(idx,:);
-        [biasPre,accPre,~,~,~,~,arL,arR] = fn_getAccBias(tempBeh.stimulus,tempBeh.responseType==1, tempBeh.responseType==0); 
-        arPre = arL/2 + arR/2; rt = tempBeh.responseTime - tempBeh.stimulusTime; rtPre = mean(rt(tempBeh.responseType~=0));
+        [biasPre,accPre,~,~,~,~,arL,arR] = fn_getAccBias(tempBeh(:,5),tempBeh(:,7)==1, tempBeh(:,7)==0); 
+        arPre = arL/2 + arR/2; rt = tempBeh(:,9) - tempBeh(:,8); rtPre = mean(rt(tempBeh(:,7)~=0));
         biasPre = abs(biasPre);
     end 
 end 
 
 function [acc, ar, rt,bias] = fn_getStartEndInterleave(beh,task)
 
-[~,tempAcc,~,~,~,~,~,~,~] = fn_getAccBiasSmooth(beh.stimulus,beh.responseType,30,task);
+[~,tempAcc,~,~,~,~,~,~,~] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),30,task);
 [~,tempIdx] = max(tempAcc);
 preLearningTrial = max([1 tempIdx-30]):min([tempIdx+30 size(beh,1)]);
 [acc, ar, rt,bias] = getAcc(beh, preLearningTrial);
 
     function [accPre, arPre, rtPre,biasPre] = getAcc(beh, idx)
         tempBeh = beh(idx,:);
-        [biasPre,accPre,~,~,~,~,arL,arR] = fn_getAccBias(tempBeh.stimulus,tempBeh.responseType==1, tempBeh.responseType==0); 
-        arPre = arL/2 + arR/2; rtPre = tempBeh.responseTime - tempBeh.stimulusTime; rtPre = mean(rtPre(tempBeh.responseType~=0));
+        [biasPre,accPre,~,~,~,~,arL,arR] = fn_getAccBias(tempBeh(:,5),tempBeh(:,7)==1, tempBeh(:,7)==0); 
+        arPre = arL/2 + arR/2; rtPre = tempBeh(:,9) - tempBeh(:,8); rtPre = mean(rtPre(tempBeh(:,7)~=0));
         biasPre = abs(biasPre);
     end 
 end 
@@ -292,9 +287,9 @@ fprintf('Parsing data matrix...\n');
 % --- Step 1: Extract relevant columns ---
 % We assume day is in col 1, block # in col 3, and stimulus in col 5
 try
-    dayRow = dataMatrix.date;
-    blockRow = dataMatrix.session;
-    stimRow = dataMatrix.stimulus;
+    dayRow = dataMatrix(:, 1);
+    blockRow = dataMatrix(:, 3);
+    stimRow = dataMatrix(:, 5);
 catch ME
     error('Input matrix dimensions are incorrect. Expected at least 5 columns. Error: %s', ME.message);
 end
@@ -318,7 +313,7 @@ for i = 1:nBlocks
     trialIndices = find(groupIdx == i);
     
     % Extract all data for these trials from the original matrix
-    parsedBlocks{i} = dataMatrix{trialIndices, :};
+    parsedBlocks{i} = dataMatrix(trialIndices, :);
     
     % Now, analyze the stimuli present in this block
     % We use 'unique' to get a list of all stimulus IDs in this block
