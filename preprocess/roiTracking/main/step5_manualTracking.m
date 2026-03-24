@@ -63,15 +63,24 @@ function step5_manualTracking(datapath)
     function stackROI=initiateStackROI(ops)
         roiPath = [ops.refStackReconPath filesep 'cellprofilerROI'];
         roiHandPath = [ops.refStackReconPath filesep 'cellprofilerROI_handdrawn'];
-        [roi] = fn_dirFilefun(roiPath, @readTiffMask, '*.tiff');
-        [roiHand] = fn_dirFilefun(roiHandPath, @readTiffMask, '*.tiff');
+        roiImageJ = [ops.refStackReconPath filesep 'ROI.zip'];
+        if exist(roiPath,'dir') == 7
+            disp('CellProfiler ROI detected!')
+            [roi] = fn_dirFilefun(roiPath, @readTiffMask, '*.tiff');
+            [roiHand] = fn_dirFilefun(roiHandPath, @readTiffMask, '*.tiff');
+    
+            stackROI.coordRaw = [cellfun(@(x)(x{1}),roi,'UniformOutput',false); ...
+                cellfun(@(x)(x{1}),roiHand,'UniformOutput',false) ];
+            stackROI.centroidRaw = [cellfun(@(x)(x{2}),roi,'UniformOutput',false); ...
+                cellfun(@(x)(x{2}),roiHand,'UniformOutput',false) ];
+    
+            stackROI.roiHandFlag = [zeros(length(roi),1); ones(length(roiHand),1)];
+        elseif exist(roiImageJ,'file') == 2
+            disp('ImageJ ROI detected!')
+            
+        end 
 
-        stackROI.coordRaw = [cellfun(@(x)(x{1}),roi,'UniformOutput',false); ...
-            cellfun(@(x)(x{1}),roiHand,'UniformOutput',false) ];
-        stackROI.centroidRaw = [cellfun(@(x)(x{2}),roi,'UniformOutput',false); ...
-            cellfun(@(x)(x{2}),roiHand,'UniformOutput',false) ];
 
-        stackROI.roiHandFlag = [zeros(length(roi),1); ones(length(roiHand),1)];
         function [boundaries,centroid]= readTiffMask(filename)
             mask = imread(filename);
             boundaries = bwboundaries(mask);
@@ -122,6 +131,7 @@ function step5_manualTracking(datapath)
         imgPlot = {}; 
         roiPlot = {};
         rectPlot = {};
+
         for r = 1:rows
             for c = 1:cols
                 xPos = margin + (c-1) * (width + margin);
@@ -130,7 +140,7 @@ function step5_manualTracking(datapath)
                                             width / figPos(3), height / figPos(4)]);
                 axHandles{r, c} = ax;
                 imgPlot{r,c} = imagesc(ax, roiTemp.refImg{r, c}, [0.2, 0.8]);
-    
+
                 colormap(ax, gray);
                 hold(ax, 'on');
                 % Plot ROI, NOTE THAT IN FILL PLOT, X AND Y ARE REVERSED
@@ -205,6 +215,14 @@ function step5_manualTracking(datapath)
 
                 %roiTemp.refImg{r, c} = refStackSel(selX,selY,r);  % Replace with actual image data
             end
+            tempPatch = roiTemp.refImg(:, c);
+            tempPatchRef = tempPatch{round((rows+1)/2)};
+            for r = 1:rows
+                tempCorr = corr(tempPatch{r}(:), tempPatchRef(:));
+                [tempCorr] = fn_gaussianCorr(tempPatch{r}, tempPatchRef);
+                roiTemp.ishere(r,c) = tempCorr>0.8; 
+            end 
+
         end
         toc;
     end 

@@ -1,4 +1,4 @@
-function [imgBaselineAvg,imgPresAvg] = fn_getToneActWF_SU(filename, roiOps)
+function [imgBaselineAvg,imgPresDff] = fn_getToneActWF_SU(filename, roiOps)
 
 %tiffPath = 'D:\labData\2pData_meso\zz129';
 %fileName = 'zz128_AC_00001.tif';
@@ -17,8 +17,7 @@ nPlanes = 1; nChan = roiOps.nChan; selChan = roiOps.selChan;
 nTones = length(tone);
 toneOnset = 18;
 nTrials = 10;
-nFramesPerTone = 200;
-%nFramesPerTonePerChan = 100;
+nFramesPerTone = 100;
 selFrameEachTone = 60; 
 
 nFramesPerTrial = nFramesPerTone * nTones; % 850
@@ -29,6 +28,8 @@ frameRate = 17.1; % in the future, do not hard code this.
 imgPres = cell(1,nTones);
 imgBaseline = cell(1,nTones);
 imgStack = TIFFStack(filename);
+%refImg = imgStack(:,:,selChan:nChan:1000);
+%refImg = fn_fastAlign(refImg);
 for i = 1:nTrials
     disp(['Trial ' int2str(i)])
     for j = 1:nTones
@@ -41,7 +42,7 @@ for i = 1:nTrials
         %img = permute(img,[2 1 3]);xpix = size(img,2); ypix = size(img,1); nFrame = size(img,3); 
         img = imgStack(:,:,selFrame(1):nChan:selFrame(2));
 
-        [imgCell, imgFOV] = fn_splitFOV(img, roiOps);
+        [~, imgFOV] = fn_splitFOV(img, roiOps);
         %[~,T] = sbxalignxMat(imgFOV,1:size(imgFOV,3));
         %for k=1:size(imgFOV,3); imgFOV(:,:,k) = circshift(imgFOV(:,:,k),T(k,:)); end
         
@@ -60,36 +61,47 @@ imgBaselineAvg = fn_cell2mat(cellfun(@(x)(mean(fn_cell2mat(x,3),3)),imgBaseline,
 imgPresAvg = imgPresAvg(:,:,toneindex); imgBaselineAvg = imgBaselineAvg(:,:,toneindex);
 imgBaselineAvgRep = repmat(nanmean(nanmean(imgBaselineAvg,1),2),[size(imgBaselineAvg,1) size(imgBaselineAvg,2) 1]); 
 imgBaselineF = mean(imgBaselineAvg,3); 
-imgPresDff = imgPresAvg-imgBaselineAvg ;
-%imgBaselineF(imgBaselineF<0) = 0; imgBaselineF = imgBaselineF+20;
+
+% smooth the image first before computing dff
+tempRatioXY = 1;
+imgPresDff = zeros(size(imgPresAvg));
 for i = 1:length(tone)
-    K = (1/(18*18*20))*ones(18,18*20);
-    temp = conv2(imgPresDff(:,:,i),K,'same');
-    imgPresDff(:,:,i) = temp - mean(temp(:)) ;
+    K = (1/(200*200*tempRatioXY))*ones(200,200*tempRatioXY);
+    imgPresAvgTemp = conv2(imgPresAvg(:,:,i),K,'same');
+    imgBaselineAvgTemp = conv2(imgBaselineAvg(:,:,i),K,'same');
+    imgPresDff(:,:,i) = (imgPresAvgTemp - imgBaselineAvgTemp) ./ max(imgBaselineAvgRep(:));
 end 
 
+% PLOT 1 -- Tone by Tone DFF map
 figure; 
 for i = 1:length(tone)
-    subplot(3,6,i);
-
+    subplot(4,5,i);
     tempImg = imgPresDff(:,:,i);
-    imagesc((tempImg)); colormap gray; clim([-0.5 1]);
+    imagesc((tempImg)); colormap gray; clim([-0.1 0.15]);
     title([int2str(round(tone(toneindex(i)))) ' Hz'])
 end
-toneMultiply = reshape(1:length(tone),[1 1 length(tone)]);
-normFactor = imgPresDff - min(imgPresDff,[],3);
-imgPresDffNorm = normFactor ./ repmat(nansum(normFactor,3),[1 1 length(tone)]);
-toneMapAvg = nansum(imgPresDffNorm .* repmat(toneMultiply,[size(imgPresDff,1) size(imgPresDff,2) 1]),3);
-figure; imagesc(toneMapAvg); colorbar
 
-K = (1/(6*42))*ones(6,42);
-tempImg = conv2(mean(imgPresAvg,3)-mean(imgBaselineAvg,3),K,'same');
-figure; imagesc(tempImg);colormap gray; clim([-3 3]);
-
-figure; imagesc(nanmean(imgBaselineAvg,3)); colormap gray; clim([0 1000])
-%imgFOV = fn_getFOV(tiffPath,fileName,[tempFrameStart nChan tempFrameStart+nFramesPerTrial-2],roiSize,roiPos,nROI);
-%tempImg = mean(imgFOV,3);
-%figure; imagesc(tempImg');colormap gray; clim([0 prctile(tempImg(:),99)]);
+% PLOT 2 -- Tonotopy Map of Besrt Frequency
+imgPresDffAvgAllTone = nanmean(imgPresDff,3); dffLimit = 0.1; 
+toneRespRegion = imgPresDffAvgAllTone>dffLimit; 
+tempboundaries = bwboundaries(toneRespRegion);
+[~,tonePeakIndex] = max(imgPresDff(:,:,1:17),[],3);
+tonePeakIndex(~toneRespRegion) = nan;
+figure; imagesc(tonePeakIndex); clim([1 17]);
+a=colorbar; a.Label.String = 'tone ID'; title('tonotopic map by pixel')
+xlabel('x axis pixel'); ylabel('y axis pixel')
+hold on;
+for i = 1:length(tempboundaries)
+    plot(tempboundaries{i}(:,2),tempboundaries{i}(:,1),'r')
+end 
+% PLOT 3 -- Tonotopy Map of Best Frequency
+imgBaselineTemp = nanmean(imgBaselineAvg,3);
+figure; imagesc(imgBaselineTemp); hold on; colormap gray; clim([0 100])
+for i = 1:length(tempboundaries)
+    plot(tempboundaries{i}(:,2),tempboundaries{i}(:,1),'r')
+end 
+xlabel('x axis pixel'); ylabel('y axis pixel');
+title('structure reference map')
 
 
 

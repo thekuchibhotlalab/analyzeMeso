@@ -9,8 +9,8 @@ switch animalName
             sessionInfo.SessionName(tempIdx(i)) = {strjoin({sessionInfo.SessionType{tempIdx(i)},int2str(sessionInfo.SessionNumber(tempIdx(i)))},'')};
         end 
                 
-        tempIdx1 = find(sessionInfo.SessionDate == 20240514 | sessionInfo.SessionNumber == 1);
-        tempIdx2 = find(sessionInfo.SessionDate == 20240514 | sessionInfo.SessionNumber == 2);
+        tempIdx1 = find(sessionInfo.SessionDate == 20240514 & sessionInfo.SessionNumber == 1 & strcmp(sessionInfo.SessionType,'2AFC'));
+        tempIdx2 = find(sessionInfo.SessionDate == 20240514 & sessionInfo.SessionNumber == 2 & strcmp(sessionInfo.SessionType,'2AFC'));
         sessionInfo.SessionNumber(tempIdx1) = 2;
         sessionInfo.SessionName(tempIdx1) = {[sessionInfo.SessionType{tempIdx1} '2']};
         sessionInfo.SessionNumber(tempIdx2) = 1;

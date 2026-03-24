@@ -26,7 +26,7 @@ for k = 1:length(roiOrder)
     tempSplitNum = strip(tempSplitNum,'left','0');tempSplitName = [tempSplitName tempSplitNum];
     saveFilename = [mousePath filesep 'green_' roiOrder{k} filesep tempSplitName '_parsed.h5'];
     saveImgname = [mousePath filesep 'green_' roiOrder{k} filesep tempSplitName '_meanImg.mat'];
-    meanImgFrames = 2000; 
+    meanImgFrames = 200; 
     if size(stack,3)>meanImgFrames; meanImg = fn_fastAlign(stack(yFrames,:,1:meanImgFrames));
     else; meanImg = fn_fastAlign(stack(yFrames,:,1:end));
     end 

@@ -18,6 +18,7 @@ function [alignedOps] = step2_checkElastixSuite2pAlign(datapath,suite2pDoubleFla
     if ~exist('suite2pDoubleFlag')
         if size(output,3) < 120
             suite2pDoubleFlag = true;
+            disp('images in suite2p is doubled')
         else
             suite2pDoubleFlag = false; 
         end 

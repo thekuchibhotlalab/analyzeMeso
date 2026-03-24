@@ -1,4 +1,4 @@
-function [imgBaselineAvg,imgPresAvg] = fn_getToneActWF(filename, roiOps)
+function [imgBaselineAvg,imgPresDff] = fn_getToneActWF(filename, roiOps)
 
 %tiffPath = 'D:\labData\2pData_meso\zz129';
 %fileName = 'zz128_AC_00001.tif';
@@ -27,16 +27,18 @@ frameRate = 17.1; % in the future, do not hard code this.
 % process each trial
 imgPres = cell(1,nTones);
 imgBaseline = cell(1,nTones);
+imgStack = TIFFStack(filename);
 
 for i = 1:nTrials
     disp(['Trial ' int2str(i)])
     tempFrameStart = (i-1)*nFramesPerTrial; 
 
     selFrame = [tempFrameStart+1, tempFrameStart+nFramesPerTrial];
-    img = fn_readTiff(filename,selFrame);
+    img = imgStack(:,:,selFrame(1):selFrame(2));
+    %img = fn_readTiff(filename,selFrame);
     %img = permute(img,[2 1 3]);xpix = size(img,2); ypix = size(img,1); nFrame = size(img,3); 
 
-    [imgCell, imgFOV] = fn_splitFOV(img, roiOps);
+    [~, imgFOV] = fn_splitFOV(img, roiOps);
     %[~,T] = sbxalignxMat(imgFOV,1:size(imgFOV,3));
     %for k=1:size(imgFOV,3); imgFOV(:,:,k) = circshift(imgFOV(:,:,k),T(k,:)); end
     
@@ -55,37 +57,43 @@ imgBaselineAvg = fn_cell2mat(cellfun(@(x)(mean(fn_cell2mat(x,3),3)),imgBaseline,
 imgPresAvg = imgPresAvg(:,:,toneindex); imgBaselineAvg = imgBaselineAvg(:,:,toneindex);
 imgBaselineAvgRep = repmat(nanmean(nanmean(imgBaselineAvg,1),2),[size(imgBaselineAvg,1) size(imgBaselineAvg,2) 1]); 
 imgBaselineF = mean(imgBaselineAvg,3); 
-imgPresDff = (imgPresAvg-imgBaselineAvg )./imgBaselineAvgRep * 100;
-%imgBaselineF(imgBaselineF<0) = 0; imgBaselineF = imgBaselineF+20;
+
+% smooth the image first before computing dff
+tempRatioXY = 11; pixelAvg = 6;
+imgPresDff = zeros(size(imgPresAvg));
 for i = 1:length(tone)
-    K = (1/(6*42))*ones(6,42);
-    temp = conv2(imgPresDff(:,:,i),K,'same');
-    imgPresDff(:,:,i) = (temp - mean(temp(:))) ./ max(temp(:));
+    K = (1/(pixelAvg*pixelAvg*tempRatioXY))*ones(pixelAvg,pixelAvg*tempRatioXY);
+    imgPresAvgTemp = conv2(imgPresAvg(:,:,i),K,'same');
+    imgBaselineAvgTemp = conv2(imgBaselineAvg(:,:,i),K,'same');
+    imgPresDff(:,:,i) = (imgPresAvgTemp - imgBaselineAvgTemp) ./ max(imgBaselineAvgRep(:));
 end 
 
+% PLOT 1 -- Tone by Tone DFF map
 figure; 
 for i = 1:length(tone)
     subplot(3,6,i);
-
     tempImg = imgPresDff(:,:,i);
     imagesc((tempImg)); colormap gray; clim([-0.5 1]);
     title([int2str(round(tone(toneindex(i)))) ' Hz'])
 end
-toneMultiply = reshape(1:length(tone),[1 1 length(tone)]);
-normFactor = imgPresDff - min(imgPresDff,[],3);
-imgPresDffNorm = normFactor ./ repmat(nansum(normFactor,3),[1 1 length(tone)]);
-toneMapAvg = nansum(imgPresDffNorm .* repmat(toneMultiply,[size(imgPresDff,1) size(imgPresDff,2) 1]),3);
-figure; imagesc(toneMapAvg); colorbar
 
-K = (1/(6*42))*ones(6,42);
-tempImg = conv2(mean(imgPresAvg,3)-mean(imgBaselineAvg,3),K,'same');
-figure; imagesc(tempImg);colormap gray; clim([-3 3]);
+% PLOT 2 -- Tonotopy Map of Besrt Frequency
+imgPresDffAvgAllTone = nanmean(imgPresDff,3); dffLimit = 0.005; 
+toneRespRegion = imgPresDffAvgAllTone>dffLimit; 
+[~,tonePeakIndex] = max(imgPresDff,[],3);
+tonePeakIndex(~toneRespRegion) = nan;
+figure; imagesc(tonePeakIndex); clim([1 17]);
+a=colorbar; a.Label.String = 'tone ID'; title('tonotopic map by pixel')
+xlabel('x axis pixel'); ylabel('y axis pixel')
 
-figure; imagesc(nanmean(imgBaselineAvg,3)); colormap gray; clim([0 1000])
-%imgFOV = fn_getFOV(tiffPath,fileName,[tempFrameStart nChan tempFrameStart+nFramesPerTrial-2],roiSize,roiPos,nROI);
-%tempImg = mean(imgFOV,3);
-%figure; imagesc(tempImg');colormap gray; clim([0 prctile(tempImg(:),99)]);
-
-
+% PLOT 3 -- Tonotopy Map of Best Frequency
+tempboundaries = bwboundaries(toneRespRegion);
+imgBaselineTemp = nanmean(imgBaselineAvg,3);
+figure; imagesc(imgBaselineTemp); hold on; colormap gray; clim([0 2000])
+for i = 1:length(tempboundaries)
+    plot(tempboundaries{i}(:,2),tempboundaries{i}(:,1),'r')
+end 
+xlabel('x axis pixel'); ylabel('y axis pixel');
+title('structure reference map')
 
 end

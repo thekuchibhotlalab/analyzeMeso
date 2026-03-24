@@ -3,17 +3,34 @@
 tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 
 %% load animal data
 
-tic; ani = Animal('zz159_PPC','actType','spk','tracking',true); 
+tic; ani = Animal('zz159_AC','actType','spk','tracking',true); 
 
+
+%% load animal data
+
+tic; ani = Animal('zz151_AC1','actType','spk','tracking',true);  toc;
+
+%% save data for trial type separated info(with spk norm)
+
+selTime = 21:50; 
+[ani,chunkedDayInfo,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
+    [1,1,2,2,3,3,4,4],'choice',[1,2,1,2,1,2,1,2],'trialSelCriteria','none');
+
+trialTypeInfo = trialTypeInfoStim; 
+save(['C:\Users\zzhu34\Documents\tempdata\' 'zz151_AC' '\' ani.ID '_trialTypeInfo_spkNorm.mat'], 'trialTypeInfo');
 %% step 1.1 -- check stimulus and chocie evoked activity
 
 % reparse the activity to include miss trials
 ani = fn_initialClustering(ani,'secondCluster',false);
 trialTypeInfoChoice = ani.trialTypeInfo; 
 
-selTime = 11:45; 
+selTime = 21:50; 
 [ani,chunkedDayInfo,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','wheelStim','dffChoice','wheelChoice','behSel'},'selTime',selTime,'stim',...
     [1,1,2,2,3,3,4,4],'choice',[1,2,1,2,1,2,1,2],'trialSelCriteria','none');
+
+trialTypeInfo = trialTypeInfoStim; 
+clusterLabel = ani.analysis.initialClustering.labelTracked;
+save(['C:\Users\zzhu34\Documents\tempdata\' ani.ID '\' ani.ID '_trialTypeInfo.mat'], 'trialTypeInfo','clusterLabel');
 
 %% regroup the periods, reduce neural response to a matrix over periods, + also reduce neural reponse over trial bins
 if ~isempty(trialTypeInfoStim.dffStim{3}{5})
@@ -22,12 +39,12 @@ if ~isempty(trialTypeInfoStim.dffStim{3}{5})
         trialTypeInfoStim.dffStim{3}{i} = [];
     end   
 end 
-if ~isempty(trialTypeInfoStim.dffStim{4}{1})
-    for i = 1:4
-        trialTypeInfoStim.dffStim{5}{i} = cat(3,trialTypeInfoStim.dffStim{4}{i},trialTypeInfoStim.dffStim{5}{i},trialTypeInfoStim.dffStim{6}{i});
-        trialTypeInfoStim.dffStim{4}{i} = []; trialTypeInfoStim.dffStim{6}{i} = [];
-    end
-end 
+% if ~isempty(trialTypeInfoStim.dffStim{4}{1})
+%     for i = 1:4
+%         trialTypeInfoStim.dffStim{5}{i} = cat(3,trialTypeInfoStim.dffStim{4}{i},trialTypeInfoStim.dffStim{5}{i},trialTypeInfoStim.dffStim{6}{i});
+%         trialTypeInfoStim.dffStim{4}{i} = []; trialTypeInfoStim.dffStim{6}{i} = [];
+%     end
+% end 
 
 [Tz] = fn_zscoreTable(trialTypeInfoStim.dffStim, 'detrendWin', 15); 
 [respMat.mat, respMat.std, respMat.flag,respMat.dprime, respMat.info] = fn_reduceStimByPeriod(Tz, ...

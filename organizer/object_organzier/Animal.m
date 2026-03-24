@@ -13,6 +13,7 @@ classdef Animal
     methods
         function obj = Animal(id,varargin)
             p = inputParser;
+            addParameter(p, 'loadNeural', true);
             addParameter(p, 'actType', 'spk');
             addParameter(p, 'parseTrial', true);
             addParameter(p, 'parseDay', true);
@@ -23,59 +24,68 @@ classdef Animal
             run([obj.ID '_param.m']);
             obj.ops = myOps;
             actType = p.Results.actType; 
+
+            
             if isfield(obj.ops,'sessionInfoName') && isfile(obj.ops.sessionInfoName)
-             load(obj.ops.sessionInfoName,'sessionInfo');
-             obj.sessionInfo = sessionInfo;
+                load(obj.ops.sessionInfoName,'sessionInfo');
+                obj.sessionInfo = sessionInfo;
             else
-             switch actType
-                 case 'dff'
-                     temp = load(obj.ops.TCname,'dff');
-                     actCell = temp.dff; clear temp;
-            
-                 case 'spk'
-                     temp = load(obj.ops.spkname,'spk');
-                     actCell = temp.spk; clear temp;
-             end 
-             
-             load(obj.ops.infoName,'sessionInfo','animalID');
-            
-             obj.sessionInfo = sessionInfo; 
-             actCell = cellfun(@single,actCell,'UniformOutput',false);
-             obj.sessionInfo.TC = actCell';
-             
-             obj.sessionInfo = dealExceptions(obj.sessionInfo,obj.ops.mouse);
-             load(obj.ops.trackingName,'ishereFinal','roiFinal');
-             obj.alignmentOps = load([myOps.alignOpsPath filesep 'ops.mat'],'ops');
-             obj.alignmentOps = obj.alignmentOps.ops; 
-             if size(sessionInfo,1) == size(ishereFinal,1)
-                for i = 1:size(sessionInfo,1)
-                    obj.sessionInfo.ishere{i} = ishereFinal(i,:);
-                    obj.sessionInfo.roi{i} = roiFinal(i,:);
-                    obj.sessionInfo.offsetMap{i} = obj.alignmentOps.offsetMap(:,:,i);
-                end
-             else
-                allDay = unique(sessionInfo.SessionDate);
-                for i = 1:length(allDay)
-                    selDay = obj.sessionInfo.SessionDate == allDay(i);
-                    obj.sessionInfo.ishere(selDay) = {ishereFinal(i,:)};
-                    obj.sessionInfo.roi(selDay) = {roiFinal(i,:)};
-                    obj.sessionInfo.offsetMap(selDay) = {obj.alignmentOps.offsetMap(:,:,i)};
-                end 
-             end             
-             cellFlag = cellfun(@(x)(nanmean(x,2)) > 0.4,obj.sessionInfo.ishere,'UniformOutput',true);
-             obj.sessionInfo.goodTracking = cellFlag;
-             obj.sessionInfo.TC(~cellFlag) = {[]};
-            end 
-            obj = obj.getBehav;
-            
-            if p.Results.parseTrial; obj = obj.parseTrial(); end 
-            if p.Results.parseDay
-                if p.Results.tracking
-                    obj = obj.parseDay('tracking'); 
+                if ~p.Results.loadNeural
+                    actCell = {};
                 else
-                    obj = obj.parseDay(); 
+                % LOAD TC
+                switch actType
+                    case 'dff'
+                        actCell = loadTC(obj.ops.TCname,'dff');
+                    case 'spk'
+                        actCell = loadTC(obj.ops.spkname,'spk');
                 end 
+                end
+
+                 % SPK NORMALIZATION
+                 disp('Doing spike normalization using norm') ;tic;
+                 if obj.ops.normSpk && p.Results.loadNeural
+                     if iscell(obj.ops.ID)
+                         for i = 1:length(actCell)
+                             actCell{i} = spkNorm(actCell{i});
+                         end
+                     else
+                         actCell = spkNorm(actCell);
+                     end 
+                 end 
+                 toc; disp('Spk normalization done!')
+                 
+                 % LOAD SESSION INFORMATION
+                 if iscell(obj.ops.ID)
+                     for i = 1:length(obj.ops.ID)
+                        [obj.sessionInfo{i}, obj.alignmentOps{i}] = getSessionInfo(obj.ops.infoName{i},actCell{i},...
+                            obj.ops.trackingName{i},obj.ops.alignOpsPath{i},obj);
+                     end 
+                 else
+                    [obj.sessionInfo, obj.alignmentOps] = getSessionInfo(obj.ops.infoName,actCell,...
+                        obj.ops.trackingName,obj.ops.alignOpsPath,obj);
+                 end 
             end 
+
+            obj = obj.getBehav;
+            obj.sessionInfo.sessionNum(:) = 1:size(obj.sessionInfo,1);
+            % SINGLE AREA -- DO TRACKING NORMALLY
+            if p.Results.loadNeural
+                if ~iscell(obj.ops.ID)
+                    if p.Results.parseTrial; obj = obj.parseTrial(); end 
+                    if p.Results.parseDay
+                        if p.Results.tracking
+                            obj = obj.parseDay('tracking'); 
+                        else
+                            obj = obj.parseDay(); 
+                        end 
+                    end 
+                % MULTI AREA -- USE SPECIAL TRACKING METHODS
+                else
+
+
+                end
+            end
         end
 
         function obj = getBehav(obj)
@@ -99,7 +109,9 @@ classdef Animal
                     obj.sessionInfo.beh(tempIndex) = {allData};
                 elseif isempty(tempIndex)
                     tempIndex = size(obj.sessionInfo,1)+1;
-                    obj.sessionInfo.beh(tempIndex) = {allData};
+                    dataTable = array2table(allData, ...
+                        'VariableNames', {'trialNum', 'stimulus', 'action','responseType','stimulusTime','responseTime','stimulusFrame','responseFrame','rewardFrame','context'});
+                    obj.sessionInfo.beh(tempIndex) = {dataTable};
                     obj.sessionInfo.SessionName(tempIndex) = {tempName};
                     obj.sessionInfo.SessionDate(tempIndex) = day;
                     obj.sessionInfo.SessionNumber(tempIndex) = str2double(tempNumber);
@@ -166,16 +178,12 @@ classdef Animal
                     %F = fn_getDff(obj.sessionInfo.TC{j},'method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',2000)';
                     F = obj.sessionInfo.TC{j}'; 
                     beh = obj.sessionInfo.beh{j};
-                    wheel = obj.sessionInfo.wheelFrame{j};
+                    
                     [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
-                    [wheelStim,wheelChoice,wheelReward] = fn_parseTrialTC(wheel,beh);
 
                     dffStim = trimTC(dffStim,trimFrame);
                     dffChoice = trimTC(dffChoice,trimFrame);
                     dffReward = trimTC(dffReward,trimFrame);
-                    wheelStim = squeeze(trimTC(wheelStim,trimFrame));
-                    wheelChoice = squeeze(trimTC(wheelChoice,trimFrame));
-                    wheelReward = squeeze(trimTC(wheelReward,trimFrame));
 
                     behTable.stimuli = beh(:,2);
                     behTable.choice = beh(:,3);
@@ -189,13 +197,23 @@ classdef Animal
                     obj.sessionInfo.dffStim{j} = dffStim;
                     obj.sessionInfo.dffChoice{j} = dffChoice;
                     obj.sessionInfo.dffReward{j} = dffReward;
+                    obj.sessionInfo.behSel{j} = behTable;
+
+                    if  strcmp('wheelFrame',obj.sessionInfo.Properties.VariableNames)
+                    wheel = obj.sessionInfo.wheelFrame{j};
+                    [wheelStim,wheelChoice,wheelReward] = fn_parseTrialTC(wheel,beh);
+
+                    wheelStim = squeeze(trimTC(wheelStim,trimFrame));
+                    wheelChoice = squeeze(trimTC(wheelChoice,trimFrame));
+                    wheelReward = squeeze(trimTC(wheelReward,trimFrame));
+
                     obj.sessionInfo.wheelStim{j} = wheelStim - repmat(wheelStim(trialStart,:),[size(wheelStim,1) 1]);
                     obj.sessionInfo.wheelChoice{j} = wheelChoice - repmat(wheelChoice(trialStart,:),[size(wheelChoice,1) 1]);
                     obj.sessionInfo.wheelReward{j} = wheelReward - repmat(wheelReward(trialStart,:),[size(wheelReward,1) 1]);
-                    obj.sessionInfo.behSel{j} = behTable;
+                    end 
                 end 
                 % lastly, keep the tuning sessions that are not parsed by behavior
-                if any(strcmp(obj.sessionInfo.SessionType{j},{'PT','puretone','pureTone','expTone'}))
+                if any(strcmp(obj.sessionInfo.SessionType{j},{'PT','puretone','pureTone','PureTone','expTone','ExpTone'}))
                     obj.sessionInfo.tuning{j} = obj.sessionInfo.TC{j}';
                 end 
             end 
@@ -230,10 +248,13 @@ classdef Animal
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffChoice',selDay, i,3);
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffReward',selDay, i,3);
                 dayInfo = catData(tempSessionInfo,dayInfo, 'behSel',selDay, i,1);
-
-                dayInfo = catData(tempSessionInfo,dayInfo, 'wheelStim',selDay, i,2);
-                dayInfo = catData(tempSessionInfo,dayInfo, 'wheelChoice',selDay, i,2);
-                dayInfo = catData(tempSessionInfo,dayInfo, 'wheelReward',selDay, i,2);
+                try
+                    dayInfo = catData(tempSessionInfo,dayInfo, 'wheelStim',selDay, i,2);
+                    dayInfo = catData(tempSessionInfo,dayInfo, 'wheelChoice',selDay, i,2);
+                    dayInfo = catData(tempSessionInfo,dayInfo, 'wheelReward',selDay, i,2);
+                catch
+                    disp('no wheel data')
+                end
                 if ~isempty(dayInfo.behSel{i})
                     [T1, T2] = fn_getAccBiasTwoTask(dayInfo.behSel{i}.stimuli,...
                         dayInfo.behSel{i}.outcome==1, dayInfo.behSel{i}.choice==0);
@@ -254,7 +275,6 @@ classdef Animal
             emptyFlag = cellfun(@isempty,dayInfo.dffStim); 
             dayInfo(emptyFlag,:) = [];
             obj.dayInfo = dayInfo;
-
 
             function dayInfo = catData(sessionInfo,dayInfo, fieldStr,selDay, idx,catDim)
                 temp = sessionInfo.(fieldStr)(selDay);
@@ -638,6 +658,18 @@ classdef Animal
             computePSTH(obj,'choice',stim,choice,p.Results.missFlag,p.Results.closeupFlag);    
         end
 
+        function [sortedSessionInfo] = sortBehSessionInfo(obj)
+            sessionInfo = obj.sessionInfo;
+            is2AFC = strcmp(sessionInfo.SessionType, '2AFC');
+            filteredInfo = sessionInfo(is2AFC, :);
+            sortedSessionInfo = sortrows(filteredInfo, {'SessionDate', 'SessionName'});
+            rowsToKeep = cellfun(@(x) ~isempty(x), sortedSessionInfo.beh);
+
+            % Apply the filter
+            sortedSessionInfo = sortedSessionInfo(rowsToKeep, :);
+        end 
+
+        
     end
 end
 
@@ -809,4 +841,85 @@ function selAct = computePSTH(obj,alignStr,missFlag,closeupFlag)
 
 
 end 
+
+% HELPER FUNCTIONS -- LOAD TC, ONE AREA OR MULTIPLE AREA
+function actCell = loadTC(TCname,keyField)
+     disp('Loading TC file') ;tic;
+     if iscell(TCname) && length(TCname)>1
+         actCell = cell(length(TCname));
+         for l = 1:length(TCname)
+            temp = load(TCname{l},keyField);
+            actCell{l} = temp.(keyField);
+            actCell{l} = cellfun(@single, actCell{l},'UniformOutput',false);
+         end 
+         clear temp;
+     else
+         temp = load(TCname,keyField);
+         actCell = temp.(keyField); clear temp;
+         actCell = cellfun(@single,actCell,'UniformOutput',false);
+     end 
+     toc; disp('Loading data done!')
+end 
+
+% HELPER FUNCTIONS -- LOAD TC
+function actCell = spkNorm(actCell)
+    spkVarBef = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);   
+    spkMeanBef = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);    
+    spkNorm = zeros(length(actCell),size(actCell{1},2)); 
+    for i = 1:length(actCell)
+        for j =1:size(actCell{i},2)
+            temp = norm(actCell{i}(:,j)); 
+            spkNorm(i,j) = temp;
+        end 
+    end 
+    
+    b = fn_cell2mat(cellfun(@(x)(size(x,1)),actCell,'UniformOutput',false),1);
+    b = b./ sum(b);
+    meanA = b' * spkNorm;
+    
+    for i = 1:length(actCell)
+        actCell{i} = actCell{i} ./ repmat(meanA,[size(actCell{i},1) 1]);
+    end 
+    spkVarAft = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);
+    spkMeanAft = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);
+end 
+
+function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingName,alignOpsPath,obj)
+    % construct sessionInfo
+    load(infoName,'sessionInfo','animalID'); 
+    if isempty(actCell)
+        sessionInfo.TC(:) = nan; 
+    else
+        sessionInfo.TC = actCell';
+        sessionInfo = dealExceptions(sessionInfo,obj.ops.mouse);
+    end
+
+    load(trackingName,'ishereFinal','roiFinal');
+    alignmentOps = load([alignOpsPath filesep 'ops.mat'],'ops');
+    alignmentOps = alignmentOps.ops; 
+
+    % construct tracking
+    if size(sessionInfo,1) == size(ishereFinal,1)
+    for i = 1:size(sessionInfo,1)
+        sessionInfo.ishere{i} = ishereFinal(i,:);
+        sessionInfo.roi{i} = roiFinal(i,:);
+        sessionInfo.offsetMap{i} = alignmentOps.offsetMap(:,:,i);
+    end
+    else
+        allDay = unique(sessionInfo.SessionDate);
+        for i = 1:length(allDay)
+            selDay = sessionInfo.SessionDate == allDay(i);
+            sessionInfo.ishere(selDay) = {ishereFinal(i,:)};
+            sessionInfo.roi(selDay) = {roiFinal(i,:)};
+            sessionInfo.offsetMap(selDay) = {alignmentOps.offsetMap(:,:,i)};
+        end 
+    end             
+    cellFlag = cellfun(@(x)(nanmean(x,2)) > 0.4,sessionInfo.ishere,'UniformOutput',true);
+    sessionInfo.goodTracking = cellFlag;
+    % sessionInfo.TC(~cellFlag) = {[]};
+end 
+
+
+% HELPTER FUNCTION -- MATCH RT IN TRIALTYPEINFO
+
 

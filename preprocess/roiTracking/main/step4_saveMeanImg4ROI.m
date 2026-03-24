@@ -1,6 +1,6 @@
 function step4_saveMeanImg4ROI(datapath)
 
-load([datapath filesep 'ops.mat'],'ops');
+load([datapath filesep 'ops.mat'],'ops','initial_transform_coord');
 load([datapath filesep 'alignedOps.mat' ],'alignedOps');
 
 matchedOffsetMap = loadMat([ops.roiTrackingPath '\offsetEvaluation']);
@@ -31,7 +31,7 @@ end
 
 reconstructImageSave(ops,alignedOps);
 
-save([datapath filesep 'ops.mat' ],'ops');
+save([datapath filesep 'ops.mat' ],'ops','initial_transform_coord');
 
 end
 

@@ -1,8 +1,11 @@
 function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
+    global learningCurveBin;
     p = inputParser;
-    addParameter(p, 'plot', false);
+    addParameter(p, 'plot', true);
+    addParameter(p, 'learningCurveBin', 100);
     parse(p, varargin{:});
 
+    learningCurveBin = p.Results.learningCurveBin;
     nDays = max(beh(:,2));
     task1Stim = zeros(1,nDays);
     task2Stim = zeros(1,nDays);
@@ -22,6 +25,13 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
 
 
     switch criteria
+        case {'all'}
+            daySplitFlag = cellfun(@length,daySplit);daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
+            [summaryStatT1, summaryStatT2,block,blockType] = makePlotInterleave(beh,daySplitFlag,p.Results.plot); 
+            selBeh = beh;
+            varargout = {summaryStatT1, summaryStatT2,block,blockType};
+            
+
         case {'task1', 'task 1', 'Task1', 'Task 1'}
             flag = fn_cell2mat(daySplit(task1Flag),1);
             daySplitFlag = cellfun(@length,daySplit(task1Flag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
@@ -40,8 +50,12 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
             flag = fn_cell2mat(daySplit(interleaveFlag),1);
             daySplitFlag = cellfun(@length,daySplit(interleaveFlag));daySplitFlag = cumsum(daySplitFlag);daySplitFlag = daySplitFlag(1:end-1);
             selBeh = beh(flag,:);
-            [summaryStatT1, summaryStatT2] = makePlotInterleave(selBeh,daySplitFlag,p.Results.plot); 
-            varargout = {summaryStatT1, summaryStatT2};
+            try
+                [summaryStatT1, summaryStatT2,block,blockType] = makePlotInterleave(selBeh,daySplitFlag,p.Results.plot); 
+            catch
+                summaryStatT1 = []; summaryStatT2 = []; block = [];blockType = [];
+            end
+            varargout = {summaryStatT1, summaryStatT2,block,blockType};
         case {'retrain'}
             if ~isempty(task1retrain)
                 flag = fn_cell2mat(daySplit(task1retrain),1);
@@ -53,7 +67,7 @@ function [selBeh,flag, varargout] = fn_selBehavByTrial(beh,criteria,varargin)
 end
 
 function summaryStat = makePlotTask1(beh,daySplitFlag,plotFlag)
-learningCurveBin = 600; 
+gloabl learningCurveBin; 
 
 [summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 
@@ -92,7 +106,7 @@ end
 end 
 
 function summaryStat = makePlotRetrain(beh,daySplitFlag,plotFlag)
-learningCurveBin = 450; 
+gloabl learningCurveBin; 
 
 [summaryStat.bias,summaryStat.acc,~,~,~,~,~,arL,arR] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 summaryStat.ar = arL/2+arR/2;
@@ -164,15 +178,23 @@ end
 
 end 
 
-function [summaryStatT1, summaryStatT2] = makePlotInterleave(beh,daySplitFlag,plotFlag)
-learningCurveBin = 200; 
+function [summaryStatT1, summaryStatT2,block,blockTypes,varargout] = makePlotInterleave(beh,daySplitFlag,plotFlag)
+global learningCurveBin;
+[parsedBlocks, blockTypes] = parseBlocksByTask(beh);
+[block.bias,block.acc]= cellfun(@(x)(fn_getAccBias(x(:,5),x(:,7)==1,x(:,6)==0)),parsedBlocks);
+
 [bias1,acc1,~,~,~,~,~,arL1,arR1] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task1');
 [bias2,acc2,~,~,~,~,~,arL2,arR2] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task2');
+[bias3,acc3,~,~,~,~,~,arL3,arR3] = fn_getAccBiasSmooth(beh(:,5),beh(:,7),learningCurveBin,'task3');
 tempT1 = beh(:,5) <=2; 
 [summaryStatT1.acc, summaryStatT1.ar, summaryStatT1.rt,summaryStatT1.bias] = fn_getStartEndInterleave(beh(tempT1,:),'task1');
-tempT2 = beh(:,5) >=3; 
+tempT2 = beh(:,5) >=3 & beh(:,5) <=4; 
 [summaryStatT2.acc, summaryStatT2.ar, summaryStatT2.rt,summaryStatT2.bias] = fn_getStartEndInterleave(beh(tempT2,:),'task2');
-
+%tempT3 = beh(:,5) >=5; 
+%if ~isempty(tempT3)
+%    [summaryStatT3.acc, summaryStatT3.ar, summaryStatT3.rt,summaryStatT3.bias] = fn_getStartEndInterleave(beh(tempT3,:),'task3');
+%end
+%varargout{1} = summaryStatT3;
 if plotFlag
     % plotting
     figure; subplot(3,1,1); hold on; 
@@ -181,6 +203,7 @@ if plotFlag
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0.5 0.5],'Color',[0.8 0.8 0.8]);
     plot(acc1,'LineWidth',2,'Color',matlabColors(2)); plot(acc2,'LineWidth',2,'Color',matlabColors(3));
+    plot(acc3,'LineWidth',2,'Color',matlabColors(5));
 
     xlim(xlimm); ylabel('accruacy');ylim(ylimm)
     
@@ -188,12 +211,14 @@ if plotFlag
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
     plot(bias1,'LineWidth',2,'Color',matlabColors(2)); plot(bias2,'LineWidth',2,'Color',matlabColors(3));
+    plot(bias3,'LineWidth',2,'Color',matlabColors(5));
     xlim(xlimm); ylabel('bias');ylim(ylimm)
     
     subplot(3,1,3);  hold on; ylimm = [0 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
     plot(arL1/2+arR1/2,'LineWidth',2,'Color',matlabColors(2)); plot(arL2/2+arR2/2,'LineWidth',2,'Color',matlabColors(3)); 
+    plot(arL3/2+arR3/2,'LineWidth',2,'Color',matlabColors(5)); 
     
     xlim(xlimm); ylabel('actionRate');ylim(ylimm)
 end 
@@ -234,3 +259,81 @@ preLearningTrial = max([1 tempIdx-30]):min([tempIdx+30 size(beh,1)]);
         biasPre = abs(biasPre);
     end 
 end 
+
+function [parsedBlocks, blockTypes] = parseBlocksByTask(dataMatrix)
+% Parses a [trials x features] data matrix into blocks based on day and block number,
+% then classifies each block by its task type based on the stimuli present.
+%
+% INPUT:
+%   dataMatrix - A [trials x features] matrix where:
+%                - Column 1 contains a unique day identifier (e.g., 20231010)
+%                - Column 3 contains the block number (e.g., 1, 2, 3)
+%                - Column 5 contains the stimulus ID (e.g., 1, 2, 3, 4)
+%
+% OUTPUTS:
+%   parsedBlocks - A cell array where each cell contains all rows (trials)
+%                  from dataMatrix that correspond to a unique block.
+%   blockTypes   - A cell array of the same size as parsedBlocks, containing
+%                  a string label for each block ('T1', 'T2', 'Int', or 'Other').
+
+fprintf('Parsing data matrix...\n');
+
+% --- Step 1: Extract relevant columns ---
+% We assume day is in col 1, block # in col 3, and stimulus in col 5
+try
+    dayRow = dataMatrix(:, 1);
+    blockRow = dataMatrix(:, 3);
+    stimRow = dataMatrix(:, 5);
+catch ME
+    error('Input matrix dimensions are incorrect. Expected at least 5 columns. Error: %s', ME.message);
+end
+
+% --- Step 2: Find all unique day/block combinations ---
+% We create a composite ID by combining the day and block columns,
+% then use 'unique' to find all unique combinations and group all trials.
+[uniqueCombinations, ~, groupIdx] = unique([dayRow, blockRow], 'rows');
+
+% Get the number of unique blocks found
+nBlocks = size(uniqueCombinations, 1);
+fprintf('Found %d unique blocks across %d unique days.\n', nBlocks, length(unique(dayRow)));
+
+% --- Step 3: Initialize output cell arrays ---
+parsedBlocks = cell(nBlocks, 1);
+blockTypes = cell(nBlocks, 1);
+
+% --- Step 4: Loop through each unique block to parse and classify ---
+for i = 1:nBlocks
+    % Find all row indices (trials) that belong to this block
+    trialIndices = find(groupIdx == i);
+    
+    % Extract all data for these trials from the original matrix
+    parsedBlocks{i} = dataMatrix(trialIndices, :);
+    
+    % Now, analyze the stimuli present in this block
+    % We use 'unique' to get a list of all stimulus IDs in this block
+    stimuliInBlock = unique(stimRow(trialIndices));
+    
+    % Check for the presence of Task 1 (stim 1 or 2)
+    hasT1 = any(ismember(stimuliInBlock, [1, 2]));
+    
+    % Check for the presence of Task 2 (stim 3 or 4)
+    hasT2 = any(ismember(stimuliInBlock, [3, 4]));
+    
+    % --- Step 5: Classify the block based on stimuli ---
+    if hasT1 && hasT2
+        % Has stimuli from both tasks
+        blockTypes{i} = 'Int';
+    elseif hasT1
+        % Has stimuli from only Task 1
+        blockTypes{i} = 'T1';
+    elseif hasT2
+        % Has stimuli from only Task 2
+        blockTypes{i} = 'T2';
+    else
+        % Contains other stimuli (e.g., 5, 6) or is empty
+        blockTypes{i} = 'Other';
+    end
+end
+
+fprintf('...Parsing complete.\n');
+end

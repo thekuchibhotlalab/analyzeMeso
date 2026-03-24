@@ -1,5 +1,8 @@
 %% load animal data
-clear; 
+clear;
+tic; ani = Animal('zz153_AC','actType','spk','tracking',true); 
+%%
+clear;
 tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 
 %% load animal data
 clear; 
@@ -8,6 +11,10 @@ tic; ani = Animal('zz159_PPC','actType','spk','tracking',true);
 %% load animal data
 clear; 
 tic; ani = Animal('zz159_AC','actType','spk','tracking',true); 
+
+%% load animal data
+clear; 
+tic; ani = Animal('zz170_AC','actType','spk','tracking',true); 
 
 %% step 1.0 -- do two-step clustering, this help us select 
 ani = fn_initialClustering(ani,'secondCluster',false);
