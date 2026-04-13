@@ -2,49 +2,49 @@ function sessionInfo = dealExceptions(sessionInfo,animalName)
 switch animalName
 
     case 'zz151'
-        AFCflag = cellfun(@(x)(strcmp(x,'2AFC')),sessionInfo.SessionType);
-        tempIdx = find( (sessionInfo.SessionDate == 20240416 & AFCflag) | (sessionInfo.SessionDate == 20240506 & AFCflag) );
-        sessionInfo.SessionNumber(tempIdx) = sessionInfo.SessionNumber(tempIdx)+1;
+        AFCflag = cellfun(@(x)(strcmp(x,'2AFC')),sessionInfo.sessionType);
+        tempIdx = find( (sessionInfo.date == 20240416 & AFCflag) | (sessionInfo.date == 20240506 & AFCflag) );
+        sessionInfo.session(tempIdx) = sessionInfo.session(tempIdx)+1;
         for i = 1:length(tempIdx)
-            sessionInfo.SessionName(tempIdx(i)) = {strjoin({sessionInfo.SessionType{tempIdx(i)},int2str(sessionInfo.SessionNumber(tempIdx(i)))},'')};
+            sessionInfo.sessionName(tempIdx(i)) = {strjoin({sessionInfo.sessionType{tempIdx(i)},int2str(sessionInfo.session(tempIdx(i)))},'')};
         end 
                 
-        tempIdx1 = find(sessionInfo.SessionDate == 20240514 & sessionInfo.SessionNumber == 1 & strcmp(sessionInfo.SessionType,'2AFC'));
-        tempIdx2 = find(sessionInfo.SessionDate == 20240514 & sessionInfo.SessionNumber == 2 & strcmp(sessionInfo.SessionType,'2AFC'));
-        sessionInfo.SessionNumber(tempIdx1) = 2;
-        sessionInfo.SessionName(tempIdx1) = {[sessionInfo.SessionType{tempIdx1} '2']};
-        sessionInfo.SessionNumber(tempIdx2) = 1;
-        sessionInfo.SessionName(tempIdx2) = {[sessionInfo.SessionType{tempIdx2} '1']};
+        tempIdx1 = find(sessionInfo.date == 20240514 & sessionInfo.session == 1 & strcmp(sessionInfo.sessionType,'2AFC'));
+        tempIdx2 = find(sessionInfo.date == 20240514 & sessionInfo.session == 2 & strcmp(sessionInfo.sessionType,'2AFC'));
+        sessionInfo.session(tempIdx1) = 2;
+        sessionInfo.sessionName(tempIdx1) = {[sessionInfo.sessionType{tempIdx1} '2']};
+        sessionInfo.session(tempIdx2) = 1;
+        sessionInfo.sessionName(tempIdx2) = {[sessionInfo.sessionType{tempIdx2} '1']};
     case 'zz153'
-        tempIdx = find(sessionInfo.SessionDate == 20240524 & sessionInfo.SessionNumber == 2);
-        sessionInfo.SessionNumber(tempIdx) = 3;
-        sessionInfo.SessionName(tempIdx) = {[sessionInfo.SessionType{tempIdx} '3']};
+        tempIdx = find(sessionInfo.date == 20240524 & sessionInfo.session == 2);
+        sessionInfo.session(tempIdx) = 3;
+        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
         % recording session 5 and 6 both correspond to behavior session 5. skip for now
-        tempIdx = find(sessionInfo.SessionDate == 20240613 & sessionInfo.SessionNumber == 5);
+        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 5);
         sessionInfo.TC{tempIdx} = [];
-        tempIdx = find(sessionInfo.SessionDate == 20240613 & sessionInfo.SessionNumber == 6);
+        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 6);
         sessionInfo.TC{tempIdx} = [];
 
         % this session only has one trial, discard it
-        tempIdx = find(sessionInfo.SessionDate == 20240526 & sessionInfo.SessionNumber == 5);
+        tempIdx = find(sessionInfo.date == 20240526 & sessionInfo.session == 5);
         sessionInfo.TC{tempIdx} = [];
 
     case 'zz159'
-        tempIdx = find(sessionInfo.SessionDate == 20240624 & sessionInfo.SessionNumber == 1);
-        sessionInfo.SessionNumber(tempIdx) = 3;
-        sessionInfo.SessionName(tempIdx) = {[sessionInfo.SessionType{tempIdx} '3']};
+        tempIdx = find(sessionInfo.date == 20240624 & sessionInfo.session == 1);
+        sessionInfo.session(tempIdx) = 3;
+        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
-        tempIdx = find(sessionInfo.SessionDate == 20240629 & sessionInfo.SessionNumber == 2);
+        tempIdx = find(sessionInfo.date == 20240629 & sessionInfo.session == 2);
         sessionInfo.TC{tempIdx} = cat(1,sessionInfo.TC{tempIdx},nan(3000,size(sessionInfo.TC{tempIdx},2)));
 
-        tempIdx = find(sessionInfo.SessionDate == 20240716 & sessionInfo.SessionNumber == 1);
-        sessionInfo.SessionNumber(tempIdx) = 2;
-        sessionInfo.SessionName(tempIdx) = {[sessionInfo.SessionType{tempIdx} '2']};
+        tempIdx = find(sessionInfo.date == 20240716 & sessionInfo.session == 1);
+        sessionInfo.session(tempIdx) = 2;
+        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '2']};
 
-        tempIdx = find(sessionInfo.SessionDate == 20240716 & sessionInfo.SessionNumber == 2);
-        sessionInfo.SessionNumber(tempIdx) = 3;
-        sessionInfo.SessionName(tempIdx) = {[sessionInfo.SessionType{tempIdx} '3']};
+        tempIdx = find(sessionInfo.date == 20240716 & sessionInfo.session == 2);
+        sessionInfo.session(tempIdx) = 3;
+        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
 
 

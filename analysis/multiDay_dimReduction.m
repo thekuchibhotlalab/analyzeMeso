@@ -1,6 +1,6 @@
 %% load animal data
 clear;
-tic; ani = Animal('zz153_AC','actType','spk','tracking',true); 
+tic; ani = Animal('zz153_AC','actType','spk','tracking',false); 
 %%
 clear;
 tic; ani = Animal('zz153_PPC','actType','spk','tracking',true); 

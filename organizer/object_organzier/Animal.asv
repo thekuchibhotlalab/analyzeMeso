@@ -14,10 +14,11 @@ classdef Animal
         function obj = Animal(id,varargin)
             p = inputParser;
             addParameter(p, 'loadNeural', true);
+            addParameter(p, 'sessionInfoDir', '');
             addParameter(p, 'actType', 'spk');
-            addParameter(p, 'parseTrial', true);
-            addParameter(p, 'parseDay', true);
-            addParameter(p, 'tracking', true);
+            addParameter(p, 'parseTrial', false);
+            addParameter(p, 'parseDay', false);
+            addParameter(p, 'tracking', false);
             parse(p, varargin{:});
             obj.ID = id;
             % Attempt to load options file: [ID '_param.m']
@@ -25,11 +26,17 @@ classdef Animal
             obj.ops = myOps;
             actType = p.Results.actType; 
 
-            
-            if isfield(obj.ops,'sessionInfoName') && isfile(obj.ops.sessionInfoName)
-                load(obj.ops.sessionInfoName,'sessionInfo');
+            disp(['Step1 -- Loading recording parameter file: ' obj.ID '_param.m'])
+            disp('Step2 -- Loading behavior and neural TC files')
+
+            if ~isempty(p.Results.sessionInfoDir)
+                obj.ops.sessionInfoDir = p.Results.sessionInfoDir;
+                load(p.Results.sessionInfoDir,'sessionInfo','alignmentOps');
                 obj.sessionInfo = sessionInfo;
+                obj.alignmentOps = alignmentOps;
+                disp('Saved data detected -- directly loading sessionInfo')
             else
+                disp('Saved data not detected -- creating sessionInfo')
                 if ~p.Results.loadNeural
                     actCell = {};
                 else
@@ -65,15 +72,21 @@ classdef Animal
                     [obj.sessionInfo, obj.alignmentOps] = getSessionInfo(obj.ops.infoName,actCell,...
                         obj.ops.trackingName,obj.ops.alignOpsPath,obj);
                  end 
+                 obj = obj.getBehav;
             end 
 
-            obj = obj.getBehav;
-            obj.sessionInfo.sessionNum(:) = 1:size(obj.sessionInfo,1);
-            % SINGLE AREA -- DO TRACKING NORMALLY
+           
+            
             if p.Results.loadNeural
+                if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
+                        && ismember('TC', obj.sessionInfo.Properties.VariableNames) && ...
+                        p.Results.parseTrial
+                    obj = obj.parseTrial();
+                end 
+                % PARSE
+                % SINGLE AREA -- DO TRACKING NORMALLY
                 if ~iscell(obj.ops.ID)
-                    if p.Results.parseTrial; obj = obj.parseTrial(); end 
-                    if p.Results.parseDay
+                    if p.Results.parseDay && isempty(obj.dayInfo)
                         if p.Results.tracking
                             obj = obj.parseDay('tracking'); 
                         else
@@ -93,6 +106,12 @@ classdef Animal
             filelist = dir([matDir filesep obj.ops.mouse '_*_2AFCsession*.mat']);
             disp(['Loading ' matDir ' for behavioral matlab files'])
             filename = {filelist.name};
+
+            obj.sessionInfo.sessionRec(:) = 1:size(obj.sessionInfo,1);
+            % Process the raw behavioral data into a table. Record both raw data and processed table
+            obj.sessionInfo.behSel = cell(height(obj.sessionInfo), 1);
+            
+            warning off;
             for i = 1:length(filename)
                 tempFilename = strsplit(filename{i},'_');
                 day = str2double(tempFilename{2}); 
@@ -104,29 +123,43 @@ classdef Animal
 
                 allData(all(isnan(allData), 2),:) = [];
                 
-                tempIndex = find(obj.sessionInfo.SessionDate == day & strcmp(obj.sessionInfo.SessionName, tempName));
-                if length(tempIndex) == 1
+                tempIndex = find(obj.sessionInfo.date == day & strcmp(obj.sessionInfo.sessionName, tempName));
+
+                beh = allData; behTable = table();
+                behTable.stimuli = beh(:,2);
+                behTable.action = beh(:,3);
+                behTable.responseType = beh(:,4);
+                behTable.correct = beh(:,2)==beh(:,3) |  beh(:,2)==beh(:,3)+2;
+                behTable.miss = beh(:,3)==0;   
+                behTable.stimulusTime = beh(:,5);
+                behTable.responseTime = beh(:,6);
+                behTable.RT = beh(:,6)-beh(:,5);
+                behTable.stimulusFrame = beh(:,7);  
+                behTable.responseFrame = beh(:,8); 
+                behTable.rewardFrame = beh(:,9); 
+                % Find the corresponding 
+                if length(tempIndex) == 1 % Behavioral session exists as a recording session
                     obj.sessionInfo.beh(tempIndex) = {allData};
-                elseif isempty(tempIndex)
+                    obj.sessionInfo.behSel(tempIndex) = {behTable};
+                elseif isempty(tempIndex) % Behavioral session did not have recording
                     tempIndex = size(obj.sessionInfo,1)+1;
-                    myTable = array2table(allData, ...
-                        'VariableNames', {'trialNum', 'stimulus', 'action','reward','stimulusTime','responseTime','stimulusFrame','responseFrame','rewardFrame',});
                     obj.sessionInfo.beh(tempIndex) = {allData};
-                    obj.sessionInfo.SessionName(tempIndex) = {tempName};
-                    obj.sessionInfo.SessionDate(tempIndex) = day;
-                    obj.sessionInfo.SessionNumber(tempIndex) = str2double(tempNumber);
-                    obj.sessionInfo.SessionType(tempIndex) = {tempType};
+                    obj.sessionInfo.behSel(tempIndex) = {behTable};
+                    obj.sessionInfo.sessionName(tempIndex) = {tempName};
+                    obj.sessionInfo.date(tempIndex) = day;
+                    obj.sessionInfo.session(tempIndex) = str2double(tempNumber);
+                    obj.sessionInfo.sessionType(tempIndex) = {tempType};
                 else
                     disp(['Critical error of session ' int2str(i) ', multiple match found'])
                 end
-
-                
             end
-            days = unique(obj.sessionInfo.SessionDate);
+            warning on;
+            days = unique(obj.sessionInfo.date);
             for i = 1:length(days)
-                selDay = find(obj.sessionInfo.SessionDate == days(i));
-                obj.sessionInfo.SessionDay(selDay) = i;
+                selDay = find(obj.sessionInfo.date == days(i));
+                obj.sessionInfo.day(selDay) = i;
             end 
+            obj.sessionInfo = sortrows(obj.sessionInfo, {'date', 'sessionName'});
 
             % match the wheel data with the correct session
             animalName = strsplit(obj.ID,'_'); animalName = animalName{1};
@@ -134,9 +167,9 @@ classdef Animal
                 temp = load([obj.ops.behavPath filesep animalName '_wheelData.mat']);
                 wheelData = temp.sessionTable; clear temp; 
                 for i = 1:size(wheelData,1)
-                    matchIdx = wheelData.SessionDate(i) == obj.sessionInfo.SessionDate;
-                    matchNumIdx = wheelData.SessionNumber(i) == obj.sessionInfo.SessionNumber;
-                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), obj.sessionInfo.SessionType, 'UniformOutput',true);
+                    matchIdx = wheelData.date(i) == obj.sessionInfo.date;
+                    matchNumIdx = wheelData.session(i) == obj.sessionInfo.session;
+                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.sessionType(i))), obj.sessionInfo.sessionType, 'UniformOutput',true);
                     idx = find(matchIdx & matchTypeIdx & matchNumIdx);
                     if ~isempty(idx)
                         obj.sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
@@ -173,7 +206,6 @@ classdef Animal
         function obj = parseTrial(obj)
             trimFrame = 100; trialStart = 30; 
             for j= 1:size(obj.sessionInfo,1)
-                behTable = table();
                 if ~isempty(obj.sessionInfo.TC{j}) & ~isempty(obj.sessionInfo.beh{j})
                     %F = fn_getDff(obj.sessionInfo.TC{j},'method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',2000)';
                     F = obj.sessionInfo.TC{j}'; 
@@ -185,19 +217,11 @@ classdef Animal
                     dffChoice = trimTC(dffChoice,trimFrame);
                     dffReward = trimTC(dffReward,trimFrame);
 
-                    behTable.stimuli = beh(:,2);
-                    behTable.choice = beh(:,3);
-                    behTable.outcome = beh(:,4);
-                    behTable.RT = beh(:,6)-beh(:,5);
-                    behTable.correct = beh(:,2)==beh(:,3) |  beh(:,2)==beh(:,3)+2;
-                    behTable.miss = beh(:,3)==0;   
-                    behTable.stimFrame = beh(:,7);  
-                    behTable.choiceThreFrame = beh(:,8); 
-                    behTable.rewardFrame = beh(:,9); 
+                    
                     obj.sessionInfo.dffStim{j} = dffStim;
                     obj.sessionInfo.dffChoice{j} = dffChoice;
                     obj.sessionInfo.dffReward{j} = dffReward;
-                    obj.sessionInfo.behSel{j} = behTable;
+                    
 
                     if  strcmp('wheelFrame',obj.sessionInfo.Properties.VariableNames)
                     wheel = obj.sessionInfo.wheelFrame{j};
@@ -213,7 +237,7 @@ classdef Animal
                     end 
                 end 
                 % lastly, keep the tuning sessions that are not parsed by behavior
-                if any(strcmp(obj.sessionInfo.SessionType{j},{'PT','puretone','pureTone','PureTone','expTone','ExpTone'}))
+                if any(strcmp(obj.sessionInfo.sessionType{j},{'PT','puretone','pureTone','PureTone','expTone','ExpTone'}))
                     obj.sessionInfo.tuning{j} = obj.sessionInfo.TC{j}';
                 end 
             end 
@@ -238,10 +262,10 @@ classdef Animal
                 tempSessionInfo = obj.sessionInfo; 
             end 
             dayInfo = table();
-            days = unique(tempSessionInfo.SessionDate);
+            days = unique(tempSessionInfo.date);
             dayInfo.date = days;
             for i = 1:length(days)
-                selDay = find(tempSessionInfo.SessionDate == days(i));
+                selDay = find(tempSessionInfo.date == days(i));
                 %tempIshere = cellfun(@nansum,obj.sessionInfo.ishere(selDay));
                 %selDay(tempIshere<(0.65*length(obj.sessionInfo.ishere{1}))) = [];
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffStim',selDay, i,3);
@@ -257,7 +281,7 @@ classdef Animal
                 end
                 if ~isempty(dayInfo.behSel{i})
                     [T1, T2] = fn_getAccBiasTwoTask(dayInfo.behSel{i}.stimuli,...
-                        dayInfo.behSel{i}.outcome==1, dayInfo.behSel{i}.choice==0);
+                        dayInfo.behSel{i}.responseType==1, dayInfo.behSel{i}.action==0);
                     dayInfo.T1acc{i} = T1.acc; dayInfo.T1ar{i} = T1.ar; 
                     dayInfo.T2acc{i} = T2.acc; dayInfo.T2ar{i} = T2.ar; 
                     dayInfo.T1{i} = T1; dayInfo.T2{i} = T2;
@@ -660,9 +684,9 @@ classdef Animal
 
         function [sortedSessionInfo] = sortBehSessionInfo(obj)
             sessionInfo = obj.sessionInfo;
-            is2AFC = strcmp(sessionInfo.SessionType, '2AFC');
+            is2AFC = strcmp(sessionInfo.sessionType, '2AFC');
             filteredInfo = sessionInfo(is2AFC, :);
-            sortedSessionInfo = sortrows(filteredInfo, {'SessionDate', 'SessionName'});
+            sortedSessionInfo = sortrows(filteredInfo, {'date', 'sessionName'});
             rowsToKeep = cellfun(@(x) ~isempty(x), sortedSessionInfo.beh);
 
             % Apply the filter
@@ -884,9 +908,17 @@ function actCell = spkNorm(actCell)
     spkMeanAft = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);
 end 
 
+% HELPER FUNCTIONS -- LOAD sessionInf, rename the table variables
 function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingName,alignOpsPath,obj)
-    % construct sessionInfo
+    % load sessionInfo
     load(infoName,'sessionInfo','animalID'); 
+
+    sessionInfo = renamevars(sessionInfo, 'SessionName', 'sessionName');
+    sessionInfo = renamevars(sessionInfo, 'SessionDate', 'date');
+    sessionInfo = renamevars(sessionInfo, 'SessionType', 'sessionType');
+    sessionInfo = renamevars(sessionInfo, 'SessionNumber', 'session');
+    sessionInfo = renamevars(sessionInfo, 'SessionFrames', 'frames');
+
     if isempty(actCell)
         sessionInfo.TC(:) = nan; 
     else
@@ -906,9 +938,9 @@ function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingNa
         sessionInfo.offsetMap{i} = alignmentOps.offsetMap(:,:,i);
     end
     else
-        allDay = unique(sessionInfo.SessionDate);
+        allDay = unique(sessionInfo.date);
         for i = 1:length(allDay)
-            selDay = sessionInfo.SessionDate == allDay(i);
+            selDay = sessionInfo.date == allDay(i);
             sessionInfo.ishere(selDay) = {ishereFinal(i,:)};
             sessionInfo.roi(selDay) = {roiFinal(i,:)};
             sessionInfo.offsetMap(selDay) = {alignmentOps.offsetMap(:,:,i)};
