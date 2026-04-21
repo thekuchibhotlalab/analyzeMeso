@@ -74,8 +74,6 @@ classdef Animal
                  end 
                  obj = obj.getBehav;
             end 
-
-           
             
             if p.Results.loadNeural
                 if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
@@ -308,18 +306,6 @@ classdef Animal
             end 
         end 
 
-        function groups = groupDates(obj, mode)
-            dates = obj.dayInfo.date; n = numel(dates);
-            switch mode
-                case 'early'
-                    groups = dates(1:round(n/2));
-                case 'late'
-                    groups = dates(round(n/2)+1:end);
-                otherwise
-                    error('Unknown grouping mode');
-            end
-        end
-
         function [ishereSession,sessionCount,sessionSel] = selTracking(obj)
             tempTrackingSession = fn_cell2mat(obj.sessionInfo.ishere,1); 
             offsetMap = fn_cell2mat(obj.sessionInfo.offsetMap,3);
@@ -449,18 +435,18 @@ classdef Animal
                 switch p.Results.trialSelCriteria
     
                     case 'none'
-                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i)), outmat.behSel,'UniformOutput',false);
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.action==choice(i)), outmat.behSel,'UniformOutput',false);
                     case 'RTfast'
-                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i) & x.RT>=0.17...
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.action==choice(i) & x.RT>=0.17...
                             & x.RT<=0.3), outmat.behSel,'UniformOutput',false);
                     case 'RTslow'
-                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i) & x.RT>=0.5...
+                        selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.action==choice(i) & x.RT>=0.5...
                             & x.RT<=2.5), outmat.behSel,'UniformOutput',false);
                     case 'stim'
                         if isempty(p.Results.choice)
                             selFlag{i} = cellfun(@(x)(x.stimuli==stim(i)), outmat.behSel,'UniformOutput',false);
                         else
-                            selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.choice==choice(i)), outmat.behSel,'UniformOutput',false);
+                            selFlag{i} = cellfun(@(x)(x.stimuli==stim(i) & x.action==choice(i)), outmat.behSel,'UniformOutput',false);
                         end 
                         for k = 1:size(outmat.behSel,1)
                             wheelPos = cat(1,diff(outmat.wheelStim{k},1,1),zeros(1,size(outmat.wheelStim{k},2)));
@@ -681,17 +667,6 @@ classdef Animal
             computePSTH(obj,'stim',stim,choice,p.Results.missFlag,p.Results.closeupFlag);
             computePSTH(obj,'choice',stim,choice,p.Results.missFlag,p.Results.closeupFlag);    
         end
-
-        function [sortedSessionInfo] = sortBehSessionInfo(obj)
-            sessionInfo = obj.sessionInfo;
-            is2AFC = strcmp(sessionInfo.sessionType, '2AFC');
-            filteredInfo = sessionInfo(is2AFC, :);
-            sortedSessionInfo = sortrows(filteredInfo, {'date', 'sessionName'});
-            rowsToKeep = cellfun(@(x) ~isempty(x), sortedSessionInfo.beh);
-
-            % Apply the filter
-            sortedSessionInfo = sortedSessionInfo(rowsToKeep, :);
-        end 
 
         
     end
