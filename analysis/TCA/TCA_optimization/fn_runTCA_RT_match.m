@@ -23,7 +23,7 @@ save('outDffMat_PPC_zz159_spkNorm_choice.mat',"outDffMat");
 
 save('TCA-nonneg_zz153_zz159_PPC_spkNorm_choice.mat');
 %% plot the TCA components
-nModel = 10;
+nModel = 15;
 
 % percentageExp = []; 
 % for i = 1:nModel
@@ -83,7 +83,7 @@ TCs = [1 2];
 %TCs = [6 7 9 8];
 %TCs = [9 10];
 %TCs = [6 7 8 9 12];
-%TCs = [3 8];
+TCs = [3 8];
 figure; tempVar = [0 VEpct];
 RTtemp = 0.6; %RTtemp = nanmean(matchedRT(:));
 

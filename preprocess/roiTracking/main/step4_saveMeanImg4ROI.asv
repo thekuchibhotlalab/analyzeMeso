@@ -22,12 +22,16 @@ selMean = round(mean(avgOffset));
 ops.refStackSelLoc = selMean-15:5:selMean+15;
 ops.refStackSelLocMeanIdx = 3:5;
 
-refStack = ops.refStackAligned;
+refStack = ops.refStackAligned = ops.refStack;
 for k = 1:size(ops.refStack,3)
    [tempAligned,tempShift] = fn_fastAlign(cat(3, ops.suite2pRefImg,refStack(:,:,k)),'center');
    ops.refStackAligned(:,:,k) = tempAligned(:,:,2);
    ops.refStackAlignedT(k,:) = tempShift(2,:);
 end 
+
+%refStackAligned = loadMat([ops.roiTrackingPath '\offsetEvaluation']);
+%ops.refStackAligned(:,:,k) = tempAligned(:,:,2);
+
 
 reconstructImageSave(ops,alignedOps);
 
