@@ -6,10 +6,10 @@ load([datapath filesep 'alignedOps.mat' ],'alignedOps');
 matchedOffsetMap = loadMat([ops.roiTrackingPath '\offsetEvaluation']);
 % After this, save the image to draw roi
 
-refpath = [ops.roiTrackingPath filesep 'refStack' ];
-refName = dir([refpath filesep '*.h5']);  refName = refName(1).name;
-ops.refStackPath = [refpath filesep refName];
-ops.refStack = loadRef(ops.refStackPath);
+%refpath = [ops.roiTrackingPath filesep 'refStack' ];
+%refName = dir([refpath filesep '*.h5']);  refName = refName(1).name;
+%ops.refStackPath = [refpath filesep refName];
+%ops.refStack = loadRef(ops.refStackPath);
 
 ops.suite2pRefImg = alignedOps.suite2pImg(:,:,ops.refIdx); % which session of suite2p is used as suite2p reference
 
@@ -171,20 +171,20 @@ function output = loadMat(datapath,fieldStr,concatFlag, normalizeFlag)
     end 
 end 
 
-function [meanStack_enhanced,meanStack] = loadRef(refname)
-    if strcmp(refname(end-1:end),'h5')
-        refStack = double(h5read(refname, '/data', [1 1 1], [Inf Inf Inf]));
-    else; disp('FILENAME IS NOT h5, check'); end
-    
-    framePerPlane = 20;
-    refStack = reshape(refStack,size(refStack,1),size(refStack,2),framePerPlane,[]);
-    meanStack = nan(size(refStack,1),size(refStack,2),size(refStack,3));
-    meanStack_enhanced = nan(size(refStack,1),size(refStack,2),size(refStack,3));
-    for i = 1:size(refStack,4)
-        tempStack = fn_fastAlign(refStack(:,:,:,i));
-        meanStack(:,:,i) = imboxfilt(nanmean(tempStack,3),[3 3]);
-        meanStack_enhanced(:,:,i) = enhancedImage(meanStack(:,:,i),6);
-    end 
-    meanStack = fn_fastAlign(meanStack,'center');
-    meanStack_enhanced = fn_fastAlign(meanStack_enhanced,'center');
-end 
+% function [meanStack_enhanced,meanStack] = loadRef(refname)
+%     if strcmp(refname(end-1:end),'h5')
+%         refStack = double(h5read(refname, '/data', [1 1 1], [Inf Inf Inf]));
+%     else; disp('FILENAME IS NOT h5, check'); end
+% 
+%     framePerPlane = 20;
+%     refStack = reshape(refStack,size(refStack,1),size(refStack,2),framePerPlane,[]);
+%     meanStack = nan(size(refStack,1),size(refStack,2),size(refStack,3));
+%     meanStack_enhanced = nan(size(refStack,1),size(refStack,2),size(refStack,3));
+%     for i = 1:size(refStack,4)
+%         tempStack = fn_fastAlign(refStack(:,:,:,i));
+%         meanStack(:,:,i) = imboxfilt(nanmean(tempStack,3),[3 3]);
+%         meanStack_enhanced(:,:,i) = enhancedImage(meanStack(:,:,i),6);
+%     end 
+%     meanStack = fn_fastAlign(meanStack,'center');
+%     meanStack_enhanced = fn_fastAlign(meanStack_enhanced,'center');
+% end 

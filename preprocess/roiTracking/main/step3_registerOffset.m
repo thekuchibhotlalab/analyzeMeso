@@ -13,10 +13,12 @@ refStack = ops.refStackAligned;
 
 tic;
 for i= 1:size(alignedOps.suite2pImg,3)
+    % Simple elastix sometimes give werid shifts, so redo the rigid alignment here is necessary
     for k = 1:size(refStack,3)
         [tempAligned,tempShift] = fn_fastAlign(cat(3, alignedOps.suite2pImg(:,:,i),refStack(:,:,k)),'center');
         refStack(:,:,k) = tempAligned(:,:,2);
     end 
+    % Compute the z-offset
     [offsetMap,offsetImg,offsetX,offsetY] = fn_registerImg2Stack(refStack, alignedOps.suite2pImg(:,:,i), Pix);
     t = toc; disp(['day ' int2str(i) ', time = ' num2str(t) ' sec'])
     save([savingPath filesep 'session_' num2str(i,'%03d') '.mat'],'offsetMap','offsetImg','offsetX','offsetY');
