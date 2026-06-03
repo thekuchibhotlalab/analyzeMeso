@@ -6,8 +6,14 @@ function step6_adaptROI(datapath)
 load([datapath filesep 'ops.mat'],'ops');
 load([datapath filesep 'alignedOps.mat' ],'alignedOps');
 load([datapath filesep 'stackROI_final.mat' ],'stackROI');
+%if ~isfile([ops.roiTrackingPath filesep 'refStack' filesep 'refStackAligned.mat'])
+disp('refStack non-rigid alignment NOT detected -- OLD version -- loading refStack from TIFF')
 refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'refStackReconstruct' ]);
-%% try this
+%else
+%    disp('refStack non-rigid alignment detected -- NEW version -- loading refStack from OPS FILE')
+%    refImg_roiReference = ops.refStackAligned(:,:,ops.refStackSelLoc); 
+%end 
+% try this
 
 [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackROI, alignedOps.suite2pImg, ops.offsetMap,refImg_roiReference, ops.refStackSelLoc);
 save([datapath filesep 'stackROI_final_tracked.mat'],'roiFinal', 'ishereFinal','alignIdx1Mean','alignIdx2Mean');

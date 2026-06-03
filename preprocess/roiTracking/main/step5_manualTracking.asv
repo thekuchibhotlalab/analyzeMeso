@@ -87,18 +87,22 @@ function step5_manualTracking(datapath)
             stackROI.centroidRaw = cell(numROIs, 1);
             
             for i = 1:numROIs
-                % Handle cell array vs struct array output depending on the specific version of ReadImageJROI you are using
+                % Handle cell array vs struct array output depending on the 
+                % specific version of ReadImageJROI you are using
                 if iscell(rois)
                     currROI = rois{i};
                 else
                     currROI = rois(i);
-                end                
-                % Extract coordinates. ImageJ stores them as [X, Y] (Col, Row). The rest of your script expects [Row, Col] (Y, X), so we swap them.
+                end
+                
+                % Extract coordinates. ImageJ stores them as [X, Y] (Col, Row).
+                % The rest of your script expects [Row, Col] (Y, X), so we swap them.
                 if isfield(currROI, 'mnCoordinates') && ~isempty(currROI.mnCoordinates)
                     tempCoords = currROI.mnCoordinates;
                     % Swap X and Y to [Row, Col]
                     stackROI.coordRaw{i} = [tempCoords(:, 2), tempCoords(:, 1)];
                 end
+                
                 % Calculate the centroid using your existing nested function
                 if ~any(isnan(stackROI.coordRaw{i}(:)))
                     stackROI.centroidRaw{i} = round(getCentroid(stackROI.coordRaw{i}));
@@ -106,8 +110,13 @@ function step5_manualTracking(datapath)
                     stackROI.centroidRaw{i} = [NaN, NaN];
                 end
             end
-            % Since ImageJ ROIs don't have separate folders for auto vs handdrawn in this script, we set the handFlag array to all ones
-            stackROI.roiHandFlag = ones(numROIs, 1);  
+            
+            % Since ImageJ ROIs don't have separate folders for auto vs handdrawn in this script, 
+            % we set the handFlag array to all zeros (or all ones if you prefer)
+            stackROI.roiHandFlag = zeros(numROIs, 1);
+
+
+            
         end 
 
 

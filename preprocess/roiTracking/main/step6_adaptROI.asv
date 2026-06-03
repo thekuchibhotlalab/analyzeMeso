@@ -1,4 +1,4 @@
-%function step6_adaptROI(datapath)
+function step6_adaptROI(datapath)
 
 
 % ROI that are tracked are adapted for each suite2p session image
@@ -6,11 +6,18 @@
 load([datapath filesep 'ops.mat'],'ops');
 load([datapath filesep 'alignedOps.mat' ],'alignedOps');
 load([datapath filesep 'stackROI_final.mat' ],'stackROI');
-refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'refStackReconstruct' ]);
+if ~isfile([ops.roiTrackingPath filesep 'refStack' filesep 'refStackAligned.mat'])
+    disp('refStack non-rigid alignment NOT detected -- OLD version -- loading refStack from TIFF')
+    refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'refStackReconstruct' ]);
+else
+    refImg_roiReference = ops.refStackAligned(:,:,ops.refStackSelLoc); 
+
+end 
 %% try this
 
 [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackROI, alignedOps.suite2pImg, ops.offsetMap,refImg_roiReference, ops.refStackSelLoc);
-save(stackROI_)
+save([datapath filesep 'stackROI_final_tracked.mat'],'roiFinal', 'ishereFinal','alignIdx1Mean','alignIdx2Mean');
+end 
 %% old code
 %matchedRoi = {}; roi = struct(); 
 %stackROI.imageJ = ReadImageJROI('G:\rockfish\ziyi\zz153_PPC\meanImg\refStackAlignROI_reconstruct\roiMean.zip');
@@ -62,8 +69,15 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackR
         refImg_aligned = refImg_roiReference/65536;
         alignIdx1 = {};
         for a = 1:nDepth
-            [tempref, alignIdx1{a}] = fn_fastAlign(cat(3,suite2pImg,refImg_aligned(:,:,a)),'center');
-            refImg_aligned(:,:,a) = tempref(:,:,2);
+            tempSuite2pImg = suite2pImg; tempSuite2pImg(refImg_aligned(:,:,a)==0) = 0;
+            [tempref, alignIdx1{a}] = fn_fastAlign(cat(3,tempSuite2pImg,refImg_aligned(:,:,a)),'center');
+            if abs(alignIdx1{a}(2,1)) > 5 || abs(alignIdx1{a}(2,2)) > 5
+                disp(['abnormal alignment offset detect with depth = ' int2str(a)])
+                alignIdx1{a}(2,1) = 0; alignIdx1{a}(2,2) = 0;
+            else
+                refImg_aligned(:,:,a) = tempref(:,:,2);
+            end 
+            
         end
         roiCoordShift1 = {}; roiCenterShift1 = {};
         for a = 1:size(stackROI.centroidRedrawn,1)
@@ -117,7 +131,7 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackR
             fixedBlock = suite2pImg(tempX, tempY);
             tempOffset = offsetMap(tempX, tempY); tempOffset = nanmean(tempOffset(:));
 
-            [~,selDepth] = min(abs(refStackSelLoc - tempOffset)); % this depth matching did not consider oursize the extreme z offsets
+            [minDepthDiff,selDepth] = min(abs(refStackSelLoc - tempOffset)); % this depth matching did not consider oursize the extreme z offsets
             tempRefImg = refImg_aligned(:,:,selDepth);
             movingBlock = tempRefImg(tempX, tempY);
             [tempAligned,alignIdx2] = fn_fastAlign(cat(3,fixedBlock,movingBlock),'center');
@@ -129,7 +143,7 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean] = projectROI(stackR
             tempROIflag = find(tempCenter(:,1)>=tempX(1) & tempCenter(:,1)<=tempX(end) &...
                 tempCenter(:,2)>=tempY(1) & tempCenter(:,2)<=tempY(end)) ; % select roi in the block that needs to be updated
             ishereMatched(tempROIflag) = stackROI.ishere(selDepth,tempROIflag);
-
+            if minDepthDiff>3; ishereMatched(tempROIflag) = nan; end 
             for z = 1:length(tempROIflag)
                 tempIdx = tempROIflag(z);
                 roiMatched{tempIdx} = [roiCoordShift1{selDepth,tempIdx}(:,1) + alignIdx2(2,1),...
