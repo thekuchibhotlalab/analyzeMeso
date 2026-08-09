@@ -1,14 +1,14 @@
 %% PLOT single mouse behavior
-mouse = 'zz177'; datapath = ['G:\ziyi\mesoData\' mouse '_behavior\matlab\'];
-ops.mouse = mouse;
-ops.datapath = datapath;
-tic; beh = fn_loadBehav(ops);
-t = toc; disp(['Loading beh done, t = ' num2str(t,'%0.3f') ' secs']);
+mouse = 'zz159';
 
-[~,~, summaryStatT1] = fn_selBehavByTrial(beh,'all');
+% DATAPATH can point either to the folder containing zz177_beh.mat ...
+datapath = ['G:\ziyi\mesoData\' mouse '_behavior'];
+% ... or to the raw session files:
+% datapath = ['G:\ziyi\mesoData\' mouse '_behavior\matlab'];
 
-%[summaryStatT1,summaryStatT2,summaryStatT1_interleave,summaryStatT2_interleave,block,blockType] =...
-%    fn_plotMesoBehavIndvidual(mouse,datapath,true);
+[beh,summaryStatT1,summaryStatT2,summaryStatT1Inter, ...
+    summaryStatT2Inter,taskSession,blockType] = ...
+    fn_plotMesoBehavIndvidual(mouse,datapath,true);
 
 
 
@@ -41,9 +41,9 @@ tempColor = [];
 for i = 1:length(tempType)
     switch tempType{i}
         case 'T1'
-            tempColor(i,1:3) = [90 155 211]/255;
+            tempColor(i,1:3) = multitaskColors('task1');
         case 'T2'
-            tempColor(i,1:3) = [139 203 143]/255;
+            tempColor(i,1:3) = multitaskColors('task2');
         case 'Int'
             tempColor(i,1:3) = matlabColors(4);
 
@@ -75,25 +75,25 @@ accT2_inter = fn_cell2matFillNan(cellfun(@(x)(x.acc),summaryStatT2Inter,'Uniform
 %% plot learning curve
 figure;  subplot(1,2,1); hold on;
 plot([1 size(accT1,1)],[0.5 0.5],'Color',[0.8 0.8 0.8],'LineWidth',2)
-[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(accT1,1),accT1', {'LineWidth',3,'Color',matlabColors(2)},...
+[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(accT1,1),accT1', {'LineWidth',3,'Color',multitaskColors('task1')},...
     {'LineWidth',1,'Color',[0.8 0.8 0.8]});
 xlim([0 7000])
 
 subplot(1,2,2); hold on;
 plot([1 size(accT2,1)],[0.5 0.5],'Color',[0.8 0.8 0.8],'LineWidth',2)
-[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(accT2,1),accT2', {'LineWidth',3,'Color',matlabColors(3)},...
+[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(accT2,1),accT2', {'LineWidth',3,'Color',multitaskColors('task2')},...
     {'LineWidth',1,'Color',[0.8 0.8 0.8]});
 xlim([0 3000])
 
 
 %% plot learning curve
 figure;  subplot(1,2,1); hold on;
-[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(biasT1,1),biasT1', {'LineWidth',3,'Color',matlabColors(2)},...
+[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(biasT1,1),biasT1', {'LineWidth',3,'Color',multitaskColors('task1')},...
     {'LineWidth',1,'Color',[0.8 0.8 0.8]});
 xlim([0 7000])
 
 subplot(1,2,2); hold on;
-[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(biasT2,1),biasT2', {'LineWidth',3,'Color',matlabColors(3)},...
+[f_mean, f_sample] = fn_plotMeanSampleLine(1:size(biasT2,1),biasT2', {'LineWidth',3,'Color',multitaskColors('task2')},...
     {'LineWidth',1,'Color',[0.8 0.8 0.8]});
 xlim([0 3000])
 
@@ -154,4 +154,4 @@ xticks([1 2]); xticklabels({'pre-learning', 'post-learning'}); xtickangle(60); y
 
 
 
-end 
+end

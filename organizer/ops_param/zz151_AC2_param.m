@@ -3,17 +3,15 @@ myOps.area = 'AC2';
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 
 
-myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\matlab\']; 
-myOps.TCpath = 'C:\Users\zzhu34\Documents\tempdata\zz151_AC';
+myOps.TCpath = 'B:\zz151_AC2';
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 %myOps.sessionInfoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
-myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked_' myOps.area '.mat'];
+myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.behavPath = 'G:\ziyi\mesoData\zz151_behavior';
-myOps.alignOpsPath = 'G:\rockfish\ziyi\zz151_AC2';
-
+myOps.alignOpsPath = 'B:\zz151_AC2';
 
 myOps.frameRate = 15; 
 myOps.trackingSessionSel = 169; 

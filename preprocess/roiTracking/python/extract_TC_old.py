@@ -1,0 +1,257 @@
+import os
+import numpy as np
+import mmap
+import scipy.io
+from typing import Tuple, List
+from numba import jit, prange
+from skimage.draw import polygon
+from matplotlib.path import Path  # For converting ROI coordinates to mask using meshgrid
+
+class MovieTransformationProcessor:
+    def __init__(self, base_directory: str, animal_name: str, chunk_size: int = 1000):
+        """
+        Initialize the movie transformation processor.
+        
+        Args:
+            base_directory: Base path containing all session directories.
+            animal_name: Name of the animal.
+            chunk_size: Number of frames to process at once.
+        """
+        self.base_directory = base_directory
+        self.chunk_size = chunk_size
+        self.animal_name = animal_name
+
+    def _get_movie_dimensions(self, bin_file_path: str) -> Tuple[int, int, int]:
+        """
+        Get the dimensions of the movie from the 'ops.npy' file and binary file size.
+        
+        Args:
+            bin_file_path: Path to the binary movie file.
+
+        Returns:
+            A tuple of (x_pixels, y_pixels, n_frames).
+        """
+        ops_path = os.path.join(os.path.dirname(bin_file_path), 'ops.npy')
+        ops = np.load(ops_path, allow_pickle=True).item()
+        self.ops = ops
+        file_size = os.path.getsize(bin_file_path)
+        x_pixels = ops['Lx']
+        y_pixels = ops['Ly']
+        n_frames = file_size // (x_pixels * y_pixels * np.dtype('int16').itemsize)
+        return x_pixels, y_pixels, n_frames
+
+    def _get_ops(self, bin_file_path: str):
+        """
+        Get the operations dictionary from the 'ops.npy' file.
+        
+        Args:
+            bin_file_path: Path to the binary movie file.
+
+        Returns:
+            The operations dictionary.
+        """
+        ops_path = os.path.join(os.path.dirname(bin_file_path), 'ops.npy')
+        ops = np.load(ops_path, allow_pickle=True).item()
+        return ops
+
+    def _read_chunk(self, mm: mmap.mmap, start_frame: int, dimensions: Tuple[int, int, int]) -> np.ndarray:
+        """
+        Read a chunk (one frame) of data from the memory-mapped file.
+        
+        Args:
+            mm: Memory-mapped file of the binary movie.
+            start_frame: Starting frame index.
+            dimensions: Tuple containing (x_pixels, y_pixels, n_frames).
+        
+        Returns:
+            A numpy array representing one frame, reshaped as (y_pixels, x_pixels).
+        """
+        x_pixels, y_pixels, _ = dimensions
+        bytes_per_frame = x_pixels * y_pixels * np.dtype('int16').itemsize
+        offset = start_frame * bytes_per_frame
+
+        mm.seek(offset)
+        chunk_data = mm.read(bytes_per_frame)
+        chunk_array = np.frombuffer(chunk_data, dtype='int16')
+        return chunk_array.reshape((y_pixels, x_pixels))
+    
+    def _roi_to_mask(self, roi_coords: np.ndarray, x_pixels: int, y_pixels: int) -> np.ndarray:
+        """
+        Convert ROI coordinates (n x 2 array) into a binary mask using a meshgrid approach.
+        
+        If roi_coords is empty (shape (0,)), returns a mask of zeros.
+        
+        Args:
+            roi_coords: Array of ROI coordinates with shape (n, 2), where the first column
+                        corresponds to x coordinates and the second to y coordinates.
+            x_pixels: Number of pixels in the x-dimension.
+            y_pixels: Number of pixels in the y-dimension.
+        
+        Returns:
+            A binary mask of shape (y_pixels, x_pixels) where pixels inside the ROI are True.
+            
+        Raises:
+            ValueError: If roi_coords is non-empty and does not have the shape (N, 2).
+        """
+        # If empty, return an all-zero mask.
+        if roi_coords.size == 0:
+            return np.zeros((y_pixels, x_pixels), dtype=bool)
+        
+        if roi_coords.ndim != 2 or roi_coords.shape[1] != 2:
+            raise ValueError("ROI coordinates must have shape (N, 2).")
+        
+        # Create a grid of pixel coordinates.
+        # xx: x-coordinates (columns), yy: y-coordinates (rows)
+        xx, yy = np.meshgrid(np.arange(x_pixels), np.arange(y_pixels))
+        # Combine the coordinate grids into a list of (x, y) positions.
+        points = np.vstack((xx.ravel(), yy.ravel())).T
+        
+        # Create a Path object from the ROI coordinates.
+        # Note: ROI coordinates are assumed to be in (x, y) order.
+        roi_path = Path(roi_coords)
+        mask_flat = roi_path.contains_points(points)
+        mask = mask_flat.reshape((y_pixels, x_pixels))
+        return mask
+
+    def transform_movie(self, session_dir: str, animal_name: str, session_num: int, roi_coords_list: List[np.ndarray]) -> str:
+        """
+        Transform a movie file using pre-computed transformation parameters and ROIs.
+        
+        Args:
+            session_dir: Path to the session directory containing suite2p/plane0/data.bin.
+            animal_name: Name of the animal.
+            session_num: Session number (1-indexed) for the transformation file.
+            roi_coords_list: List of ROI coordinate arrays for the session.
+                             Each element is an array of shape (n_points, 2).
+                             
+        Returns:
+            Path to the output transformed movie file.
+        """
+        bin_file_path = os.path.join(session_dir, 'suite2p', 'plane0', 'data_suite2p.bin')
+        mat_save_path = os.path.join(session_dir, 'suite2p', 'plane0', 'data_F.mat')
+        
+        if not os.path.exists(bin_file_path):
+            raise FileNotFoundError(f"Input file not found: {bin_file_path}")
+        
+        dimensions = self._get_movie_dimensions(bin_file_path)
+        x_pixels, y_pixels, n_frames = dimensions
+        ops = self._get_ops(bin_file_path)
+        print(f"Block size: {ops.get('block_size', 'N/A')}")
+        print(f"y_pixels: {y_pixels}")
+        print(f"x_pixels: {x_pixels}")
+        
+        # Convert each ROI coordinate set into a binary mask.
+        roi_masks = []
+        count = 0
+        for roi_coords in roi_coords_list:
+            count += 1
+            mask = self._roi_to_mask(roi_coords, x_pixels, y_pixels)
+            roi_masks.append(mask)
+            if count == 10:
+                scipy.io.savemat(os.path.join(session_dir, 'suite2p', 'plane0', 'mask.mat'), {'mask': mask})
+        
+        roi_masks = np.array(roi_masks)  # Shape: (nROI, y_pixels, x_pixels)
+        allTraces = np.zeros((n_frames, len(roi_masks)))
+        
+        with open(bin_file_path, 'rb') as f:
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            for start_frame in range(0, n_frames):
+                chunk = self._read_chunk(mm, start_frame, dimensions)
+                chunk32 = chunk.astype('float32')
+                traces = self._extract_traces(chunk32, roi_masks)
+                allTraces[start_frame] = traces
+                if start_frame == 10:
+                    scipy.io.savemat(os.path.join(session_dir, 'suite2p', 'plane0', 'img.mat'), {'chunk32': chunk32})
+            mm.close()
+        
+        # Save the traces to a MATLAB file.
+        scipy.io.savemat(mat_save_path, {'allTraces': allTraces})
+        print(f'Transformed movie saved to {mat_save_path}')
+        return mat_save_path
+
+    @staticmethod
+    @jit(nopython=True, parallel=True)
+    def _extract_traces(data, roi_masks):
+        """
+        Extract traces by averaging the pixel values inside each ROI mask.
+        
+        If no pixel is present (count==0), returns NaN for that ROI.
+        
+        Args:
+            data: A numpy array of shape (y_pixels, x_pixels) representing a single frame.
+            roi_masks: A numpy array of ROI masks (nROI, y_pixels, x_pixels).
+            
+        Returns:
+            A 1D numpy array containing the averaged trace for each ROI.
+        """
+        num_rois = roi_masks.shape[0]
+        traces = np.empty(num_rois, dtype=np.float32)
+        for i in prange(num_rois):
+            count = 0
+            sum_val = 0.0
+            for y in range(roi_masks.shape[1]):
+                for x in range(roi_masks.shape[2]):
+                    if roi_masks[i, y, x]:
+                        sum_val += data[y, x]
+                        count += 1
+            if count > 0:
+                traces[i] = sum_val / count
+            else:
+                traces[i] = np.nan  # output NaN when mask has no pixels
+        return traces
+
+    def process_all_sessions(self):
+        """
+        Process all sessions found in the imaging session directory.
+        Loads the cell array of ROI coordinates from the MATLAB file (stackROI_final_tracked.mat)
+        at the base directory. This is a cell array of size (nSession x nROI). For each session,
+        the corresponding row (1st dimension) is used for processing.
+        Each ROI coordinate array (n * 2) is converted into a binary mask where the first column 
+        corresponds to x_pixels and the second to y_pixels.
+        """
+        imaging_session_dir = os.path.join(self.base_directory, 'imagingSession')
+        print(f"Imaging session directory: {imaging_session_dir}")
+        if not os.path.exists(imaging_session_dir):
+            raise FileNotFoundError(f"Imaging session directory not found: {imaging_session_dir}")
+
+        # Load ROI coordinate cell array from MATLAB file.
+        roi_mat_path = os.path.join(self.base_directory, 'stackROI_final_tracked.mat')
+        if not os.path.exists(roi_mat_path):
+            raise FileNotFoundError(f"ROI file not found: {roi_mat_path}")
+        roi_mat = scipy.io.loadmat(roi_mat_path, squeeze_me=True, struct_as_record=False)
+        # Assuming the variable name in the file is 'roiFinal'
+        roi_cell = roi_mat['roiFinal']  # Expected shape: (nSession, nROI)
+        print(roi_cell.shape)
+        # Get the list of session directories and sort them.
+        session_dirs = [d for d in os.listdir(imaging_session_dir)
+                        if os.path.isdir(os.path.join(imaging_session_dir, d))]
+        session_dirs.sort()
+
+        # Process each session directory.
+        for idx, session_dir in enumerate(session_dirs):
+            full_session_dir = os.path.join(imaging_session_dir, session_dir)
+            print(f"Processing session directory: {session_dir} with idx {idx}")
+
+            roi_row = roi_cell[idx]
+            print("Number of ROIs in session:", len(roi_row))
+            print(roi_row.shape)
+            scipy.io.savemat(os.path.join(full_session_dir, 'suite2p', 'plane0', 'roi_cell.mat'), {'shape': roi_cell.shape})
+
+            # If roi_row is a single ROI instance (ndim == 2), wrap it in a list.
+            if isinstance(roi_row, np.ndarray) and roi_row.ndim == 2:
+                roi_coords_list = [roi_row]
+            else:
+                roi_coords_list = list(roi_row) if hasattr(roi_row, '__iter__') else [roi_row]
+                
+            animal_name = self.animal_name
+            session_num = idx + 1  # 1-indexed session number
+            self.transform_movie(full_session_dir, animal_name, session_num, roi_coords_list)
+            print(f"Successfully processed {session_dir}")
+
+# For running the module independently.
+if __name__ == "__main__":
+    # Example usage:
+    base_dir = os.getcwd()
+    animal = 'zz153_AC'
+    processor = MovieTransformationProcessor(base_dir, animal)
+    processor.process_all_sessions()

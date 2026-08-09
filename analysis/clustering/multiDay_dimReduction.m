@@ -17,7 +17,7 @@ clear;
 tic; ani = Animal('zz170_AC','actType','spk','tracking',true); 
 
 %% step 1.0 -- do two-step clustering, this help us select 
-ani = fn_initialClustering(ani,'secondCluster',false);
+ani = fn_runClustering(ani.trialTypeInfo.dffStim);
 trialTypeInfoChoice = ani.trialTypeInfo; 
 
 %% step 1.1 -- check stimulus evoked activity
@@ -25,7 +25,7 @@ trialTypeInfoChoice = ani.trialTypeInfo;
 % reparse the activity to include miss trials
 selTime = 11:45; 
 [ani,~,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
-    [1,1,1,2,2,2,3,3,3,4,4,4],'choice',[1,2,0,1,2,0,1,2,0,1,2,0],'RTrange',[0.17 0.32]);
+    [1,1,1,2,2,2,3,3,3,4,4,4],'choice',[1,2,0,1,2,0,1,2,0,1,2,0]);
 
 %[~,~,trialTypeInfoStim] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
 %    [1,1,1,2,2,2,3,3,3,4,4,4],'choice',[1,2,0,1,2,0,1,2,0,1,2,0],'RTrange',[0.17 0.32]);

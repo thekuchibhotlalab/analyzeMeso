@@ -1,4 +1,8 @@
 function sessionInfo = dealExceptions(sessionInfo,animalName)
+if ~ismember('excludeNeuralAnalysis',sessionInfo.Properties.VariableNames)
+    sessionInfo.excludeNeuralAnalysis = false(height(sessionInfo),1);
+end
+
 switch animalName
 
     case 'zz151'
@@ -23,12 +27,15 @@ switch animalName
         % recording session 5 and 6 both correspond to behavior session 5. skip for now
         tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 5);
         sessionInfo.TC{tempIdx} = [];
+        sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
         tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 6);
         sessionInfo.TC{tempIdx} = [];
+        sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
         % this session only has one trial, discard it
         tempIdx = find(sessionInfo.date == 20240526 & sessionInfo.session == 5);
         sessionInfo.TC{tempIdx} = [];
+        sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
     case 'zz159'
         tempIdx = find(sessionInfo.date == 20240624 & sessionInfo.session == 1);

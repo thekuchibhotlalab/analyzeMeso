@@ -1,0 +1,22 @@
+#!/bin/bash -l
+#SBATCH --account=kkuchib1
+#SBATCH --partition=shared
+#SBATCH --job-name=extract_TC
+#SBATCH --mem=15G  
+#SBATCH --output=extract_TC.out
+#SBATCH --error=extract_TC.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=24:00:00
+
+# Load any necessary modules or dependencies
+module load anaconda
+
+# Activate the virtual environment
+conda activate suite2p 
+
+# Run your Python script
+python extract_TC.py
+
+# Deactivate the virtual environment
+conda deactivate

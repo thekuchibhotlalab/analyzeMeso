@@ -3,14 +3,13 @@ myOps.mouse = 'zz153';
 myOps.area = 'PPC'; 
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 % Information about data location of the animal
-myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\matlab\']; 
+myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\']; 
 myOps.TCpath = 'C:\Users\zzhu34\Documents\tempdata\zz153_PPC';
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
-myOps.behavPath = 'G:\ziyi\mesoData\zz153_behavior';
-myOps.alignOpsPath = 'G:\rockfish\ziyi\zz153_PPC';
+myOps.alignOpsPath = 'C:\Users\zzhu34\Documents\tempdata\zz153_PPC';
 % Information about recording and behavior
 %myOps.dayT1 = [20240516,20240522];
 %myOps.dayT1_expert = [20240516,20240522];

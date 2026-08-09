@@ -62,7 +62,7 @@ end
 
 %TCs = [2 4 5 8 12 15];
 
-TCs = [1 2];
+TCs = [6 5 11];
 %TCs = [2 3 4 5 6 7 12 13];
 %TCs = [5 6 13];
 %TCs = [7 8];
@@ -83,7 +83,7 @@ TCs = [1 2];
 %TCs = [6 7 9 8];
 %TCs = [9 10];
 %TCs = [6 7 8 9 12];
-TCs = [3 8];
+%TCs = [3 8];
 figure; tempVar = [0 VEpct];
 RTtemp = 0.6; %RTtemp = nanmean(matchedRT(:));
 

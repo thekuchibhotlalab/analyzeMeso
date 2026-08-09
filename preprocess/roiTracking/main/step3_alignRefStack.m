@@ -22,7 +22,9 @@ end
 
 function [meanStack_enhanced,meanStack] = loadRef(refname)
     if strcmp(refname(end-1:end),'h5')
+        tic;
         refStack = double(h5read(refname, '/data', [1 1 1], [Inf Inf Inf]));
+        toc; 
     else; disp('FILENAME IS NOT h5, check'); end
     
     framePerPlane = 20;

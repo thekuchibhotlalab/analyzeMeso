@@ -90,7 +90,7 @@ if plotFlag
     xlimm = [0 length(summaryStat.acc)];ylimm = [min([0.3 min(summaryStat.acc)]) 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0.5 0.5],'Color',[0.8 0.8 0.8]);
-    plot(summaryStat.acc,'LineWidth',2,'Color',matlabColors(2));
+    plot(summaryStat.acc,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('accruacy')
     
@@ -98,14 +98,14 @@ if plotFlag
     subplot(3,1,2);  hold on; ylimm = [-1 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8]); 
-    plot(summaryStat.bias,'LineWidth',2,'Color',matlabColors(2));
+    plot(summaryStat.bias,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('bias')
     
     subplot(3,1,3);  hold on; ylimm = [0 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(arL/2+arR/2,'LineWidth',2,'Color',matlabColors(2)); 
+    plot(arL/2+arR/2,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('actionRate')
 end 
@@ -125,7 +125,7 @@ if plotFlag
     xlimm = [0 length(summaryStat.acc)];ylimm = [min([0.3 min(summaryStat.acc)]) 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0.5 0.5],'Color',[0.8 0.8 0.8]);
-    plot(summaryStat.acc,'LineWidth',2,'Color',matlabColors(2));
+    plot(summaryStat.acc,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('accruacy')
     
@@ -133,14 +133,14 @@ if plotFlag
     subplot(3,1,2);  hold on; ylimm = [-1 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8]); 
-    plot(summaryStat.bias,'LineWidth',2,'Color',matlabColors(2));
+    plot(summaryStat.bias,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('bias')
     
     subplot(3,1,3);  hold on; ylimm = [0 1];
     fn_plotVertLine(daySplitFlag,ylimm);ylim(ylimm)
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(arL/2+arR/2,'LineWidth',2,'Color',matlabColors(2)); 
+    plot(arL/2+arR/2,'LineWidth',2,'Color',multitaskColors('task1'));
     
     xlim(xlimm); ylabel('actionRate')
 end 
@@ -163,21 +163,21 @@ if plotFlag
     xlimm = [0 length(summaryStat.acc)]; ylimm = [min([0.3 min(summaryStat.acc)]) 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0.5 0.5],'Color',[0.8 0.8 0.8]);
-    plot(summaryStat.acc,'LineWidth',2,'Color',matlabColors(3));
+    plot(summaryStat.acc,'LineWidth',2,'Color',multitaskColors('task2'));
     
     xlim(xlimm); ylabel('accruacy'); ylim(ylimm)
     
     subplot(3,1,2);  hold on; ylimm = [-1 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(summaryStat.bias,'LineWidth',2,'Color',matlabColors(3));
+    plot(summaryStat.bias,'LineWidth',2,'Color',multitaskColors('task2'));
 
     xlim(xlimm); ylabel('bias'); ylim(ylimm)
     
     subplot(3,1,3);  hold on; ylimm = [0 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(arL/2+arR/2,'LineWidth',2,'Color',matlabColors(3)); 
+    plot(arL/2+arR/2,'LineWidth',2,'Color',multitaskColors('task2'));
     
     xlim(xlimm); ylabel('actionRate'); ylim(ylimm)
 end 
@@ -209,7 +209,7 @@ if plotFlag
     xlimm = [0 length(acc1)]; ylimm = [min([0.3 min(acc1) min(acc2)]) 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0.5 0.5],'Color',[0.8 0.8 0.8]);
-    plot(acc1,'LineWidth',2,'Color',matlabColors(2)); plot(acc2,'LineWidth',2,'Color',matlabColors(3));
+    plot(acc1,'LineWidth',2,'Color',multitaskColors('task1')); plot(acc2,'LineWidth',2,'Color',multitaskColors('task2'));
     plot(acc3,'LineWidth',2,'Color',matlabColors(5));
 
     xlim(xlimm); ylabel('accruacy');ylim(ylimm)
@@ -217,14 +217,14 @@ if plotFlag
     subplot(3,1,2);  hold on;  ylimm = [-1 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(bias1,'LineWidth',2,'Color',matlabColors(2)); plot(bias2,'LineWidth',2,'Color',matlabColors(3));
+    plot(bias1,'LineWidth',2,'Color',multitaskColors('task1')); plot(bias2,'LineWidth',2,'Color',multitaskColors('task2'));
     plot(bias3,'LineWidth',2,'Color',matlabColors(5));
     xlim(xlimm); ylabel('bias');ylim(ylimm)
     
     subplot(3,1,3);  hold on; ylimm = [0 1];
     fn_plotVertLine(daySplitFlag,ylimm);
     plot(xlimm, [0 0],'Color',[0.8 0.8 0.8])
-    plot(arL1/2+arR1/2,'LineWidth',2,'Color',matlabColors(2)); plot(arL2/2+arR2/2,'LineWidth',2,'Color',matlabColors(3)); 
+    plot(arL1/2+arR1/2,'LineWidth',2,'Color',multitaskColors('task1')); plot(arL2/2+arR2/2,'LineWidth',2,'Color',multitaskColors('task2'));
     plot(arL3/2+arR3/2,'LineWidth',2,'Color',matlabColors(5)); 
     
     xlim(xlimm); ylabel('actionRate');ylim(ylimm)

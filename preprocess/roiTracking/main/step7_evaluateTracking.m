@@ -6,7 +6,17 @@ load([datapath filesep 'stackROI_final_tracked.mat' ]);
 load([datapath filesep 'stackROI_final.mat' ]);
 
 %% compute image patch correlation
-refStackSel = loadRefstacksel('G:\rockfish\ziyi\zz159_AC\roiTracking\refStackReconstruct');
+refStackSel = loadRefstacksel('G:\rockfish\ziyi\zz159_AC\roiTracking\refStackReconstruct',ops.refStackSelLoc);
+nDepthAll = numel(ops.refStackSelLoc);
+centerDepthIdx = ceil(nDepthAll/2);
+centerDepthLoc = ops.refStackSelLoc(centerDepthIdx);
+if nDepthAll > 1
+    zStep = median(abs(diff(ops.refStackSelLoc)));
+else
+    zStep = 1;
+end
+offsetClim = max(abs(ops.refStackSelLoc - centerDepthLoc));
+if offsetClim == 0; offsetClim = zStep; end
 xSize = size(alignedOps.suite2pImg,1);
 ySize = size(alignedOps.suite2pImg,2);
 roiImgSize = 20;
@@ -52,13 +62,13 @@ for i = 1:size(roiFinal,2)
     a = corr(patch1,'rows','complete');
     b = corr(patch2,'rows','complete');
 
-    corrIndiceRaw(:,i) = a(:,4);
+    corrIndiceRaw(:,i) = a(:,centerDepthIdx);
     if ~isnan(middleIndices(i))
         corrIndice(:,i) = b(:,middleIndices(i));
         corrIndiceCenter(:,i) = a(:,middleIndices(i));
     else
-        corrIndice(:,i) = b(:,4);
-        corrIndiceCenter(:,i) = a(:,4);
+        corrIndice(:,i) = b(:,centerDepthIdx);
+        corrIndiceCenter(:,i) = a(:,centerDepthIdx);
     end 
 end
 %% example image
@@ -82,7 +92,17 @@ title(['Cdf of #accepted' newline 'neurons over #sessions'])
 
 nDepth = nansum(stackROI.ishere,1);
 subplot(2,2,3); histogram(nDepth)
-xticks([0 1 3 5 7]); xticklabels({'Rej.','0um','10um','20um','30um'});
+depthTicks = unique([0 1:2:nDepthAll nDepthAll]);
+xticks(depthTicks);
+depthTickLabels = cell(size(depthTicks));
+for i = 1:numel(depthTicks)
+    if depthTicks(i) == 0
+        depthTickLabels{i} = 'Rej.';
+    else
+        depthTickLabels{i} = [num2str((depthTicks(i)-1)*zStep,'%g') 'um'];
+    end
+end
+xticklabels(depthTickLabels);
 xlabel('Present depth'); ylabel('Number of neurons')
 title(['Depth range of' newline 'accepted neurons'])
 
@@ -95,14 +115,16 @@ ylabel('Cells'); legend({'Rejected','Accepted'},"Location","best");
 title(['Correlation of accepted vs.' newline ' rejected cells with reference image'])
 
 figure; 
-for i = 1:7
+for i = 1:nDepthAll
     cdfplot(corrIndiceRaw(i,:)); hold on;
 end
 xlabel('Image pixel correlation with reference img');
-ylabel('Cells'); legend({'-15um','-10um','-5um','0um','5um','10um','15um'},"Location","best");
+ylabel('Cells');
+depthLabels = arrayfun(@(x)([num2str(x-centerDepthLoc,'%+g') 'um']),ops.refStackSelLoc,'UniformOutput',false);
+legend(depthLabels,"Location","best");
 title(['Correlation of cells with reference' newline 'image, as function of depth'])
 %% visualize offset map
-tempCenter = ops.refStackSelLoc(4);
+tempCenter = centerDepthLoc;
 tempTotalOff = squeeze(nanmean(nanmean(abs(ops.offsetMap - tempCenter),1),2));
 [offsetValueRanked, offsetRank] = sort(tempTotalOff,'descend');
 figure; plot(offsetValueRanked); xlabel('Session Number'); ylabel('z-depth diff from center');
@@ -136,34 +158,34 @@ for i = 1:length(offsetRank)
 
     tempPlot = ops.offsetMap(:,:,offsetRank(i)) - tempCenter;
     imagesc(tempPlot(10:end-10,10:end-10)); colormap redblue;
-    clim([-15 15]);xticks([]);yticks([])
+    clim([-offsetClim offsetClim]);xticks([]);yticks([])
     colormap redblue
 end 
 
 subplot_tight(10,22,length(offsetRank)+1,[0.01 0.01]);xticks([]);yticks([])
 colormap redblue; c = colorbar; 
-c.Ticks = [0 1/6 1/3 0.5 2/3 5/6 1]; % Custom tick positions
-c.TickLabels = {'-15','-10','-5','0','5','10','15'}; % Custom labels
-% cticks([0 1/6 1/3 0.5 2/3 5/6 1]); cticklabels({'-15','-10','-5','0','5','10','15'})
+c.Ticks = linspace(0,1,7);
+c.TickLabels = arrayfun(@(x)num2str(x,'%g'),linspace(-offsetClim,offsetClim,7),'UniformOutput',false);
 %% visualize the stackROI tracked
 figure; 
-for i = 1:7
-    subplot_tight(1,7,i,[0.01 0.01])
+for i = 1:nDepthAll
+    subplot_tight(1,nDepthAll,i,[0.01 0.01])
     fn_plotImgROI(zeros(size(ops.suite2pRefImg)),stackROI.coordRedrawn(i,:),stackROI.ishere(i,:));
     xticks([]);yticks([])
 end 
 
 
 %% functions
-function img = loadRefstacksel(folder_path)
+function img = loadRefstacksel(folder_path,refStackSelLoc)
     % Get a list of all files in the folder
-    files = dir([folder_path filesep '*.tiff']);
-    
-    % Extract the filenames
-    filenames = {files.name};
-    
-    % Filter filenames that contain 'refImg' but do not contain '_'
-    filtered_filenames = filenames(contains(filenames, 'refImg') & ~contains(filenames, '_'));
+    if nargin >= 2 && ~isempty(refStackSelLoc)
+        filtered_filenames = arrayfun(@(x)(['refImg' num2str(x,'%02d') '.tiff']), ...
+            refStackSelLoc(:)','UniformOutput',false);
+    else
+        files = dir([folder_path filesep '*.tiff']);
+        filenames = {files.name};
+        filtered_filenames = sort(filenames(contains(filenames, 'refImg') & ~contains(filenames, '_')));
+    end
     img = {};
     for k = 1:length(filtered_filenames)
         img{k} = double(imread([folder_path filesep filtered_filenames{k}]));

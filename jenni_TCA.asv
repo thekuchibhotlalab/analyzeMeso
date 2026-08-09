@@ -1,0 +1,27 @@
+
+S_plus = fn_cell2mat(cellfun(@(x)(squeeze(nanmean(x(1:40,:,:),1))),pseudopop,'UniformOutput',false),3);
+S_minus = fn_cell2mat(cellfun(@(x)(squeeze(nanmean(x(41:80,:,:),1))),pseudopop,'UniformOutput',false),3);
+S = cat(4,S_plus,S_minus);
+
+S = permute(S,[2 1 3 4]);
+
+figure; imagesc(S(:,:,1,1))
+
+%%
+R = 4;
+Stensor = tensor(S);
+[M,k0,info] = cp_als(Stensor,R);
+
+%%
+figure; 
+subplot(1,4,2);
+imagesc(M{1})
+
+subplot(1,4,2);
+imagesc(M{2}')
+
+subplot(1,4,3);
+imagesc(M{3}')
+
+subplot(1,4,4);
+imagesc(M{4}')

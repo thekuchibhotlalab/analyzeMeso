@@ -51,7 +51,7 @@ classdef Animal
 
                  % SPK NORMALIZATION
                  disp('Doing spike normalization using norm') ;tic;
-                 if obj.ops.normSpk && p.Results.loadNeural
+                 if obj.ops.normSpk && p.Results.loadNeural && strcmp(actType,'spk')
                      if iscell(obj.ops.ID)
                          for i = 1:length(actCell)
                              actCell{i} = spkNorm(actCell{i});
@@ -74,6 +74,10 @@ classdef Animal
                  end 
                  obj = obj.getBehav;
             end 
+            if ~iscell(obj.sessionInfo) && istable(obj.sessionInfo) && ...
+                    ismember('behSel',obj.sessionInfo.Properties.VariableNames)
+                obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
+            end
             
             if p.Results.loadNeural
                 if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
@@ -127,7 +131,7 @@ classdef Animal
                 behTable.stimuli = beh(:,2);
                 behTable.action = beh(:,3);
                 behTable.responseType = beh(:,4);
-                behTable.correct = beh(:,2)==beh(:,3) |  beh(:,2)==beh(:,3)+2;
+                behTable.correct = beh(:,4)==1;
                 behTable.miss = beh(:,3)==0;   
                 behTable.stimulusTime = beh(:,5);
                 behTable.responseTime = beh(:,6);
@@ -165,9 +169,9 @@ classdef Animal
                 temp = load([obj.ops.behavPath filesep animalName '_wheelData.mat']);
                 wheelData = temp.sessionTable; clear temp; 
                 for i = 1:size(wheelData,1)
-                    matchIdx = wheelData.date(i) == obj.sessionInfo.date;
-                    matchNumIdx = wheelData.session(i) == obj.sessionInfo.session;
-                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.sessionType(i))), obj.sessionInfo.sessionType, 'UniformOutput',true);
+                    matchIdx = wheelData.SessionDate(i) == obj.sessionInfo.date;
+                    matchNumIdx = wheelData.SessionNumber(i) == obj.sessionInfo.session;
+                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), obj.sessionInfo.sessionType, 'UniformOutput',true);
                     idx = find(matchIdx & matchTypeIdx & matchNumIdx);
                     if ~isempty(idx)
                         obj.sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
@@ -177,6 +181,7 @@ classdef Animal
             catch
                 disp('no wheel data detected')
             end 
+            obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
         end
 
         function data = selData(obj,method, param)
@@ -208,8 +213,26 @@ classdef Animal
                     %F = fn_getDff(obj.sessionInfo.TC{j},'method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',2000)';
                     F = obj.sessionInfo.TC{j}'; 
                     beh = obj.sessionInfo.beh{j};
-                    
-                    [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
+                    try
+                        [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
+                    catch ME
+                        nFrames = size(F,2);
+                        [behTrim,keepTrial] = trimBehToRecording(beh,nFrames);
+                        if length(keepTrial) == size(beh,1)
+                            rethrow(ME)
+                        end
+                        fprintf(['Frames exceed recording in session row %d. ' ...
+                            'Parsing %d/%d behavior trials within %d imaging frames.\n'], ...
+                            j,length(keepTrial),size(beh,1),nFrames);
+                        beh = behTrim;
+                        obj.sessionInfo.beh{j} = behTrim;
+                        if ismember('behSel',obj.sessionInfo.Properties.VariableNames) && ...
+                                ~isempty(obj.sessionInfo.behSel{j})
+                            obj.sessionInfo.behSel{j} = trimBehSel(obj.sessionInfo.behSel{j},keepTrial);
+                        end
+                        [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
+
+                    end 
 
                     dffStim = trimTC(dffStim,trimFrame);
                     dffChoice = trimTC(dffChoice,trimFrame);
@@ -221,7 +244,7 @@ classdef Animal
                     obj.sessionInfo.dffReward{j} = dffReward;
                     
 
-                    if  strcmp('wheelFrame',obj.sessionInfo.Properties.VariableNames)
+                    if  ~isempty(beh) && ismember('wheelFrame',obj.sessionInfo.Properties.VariableNames)
                     wheel = obj.sessionInfo.wheelFrame{j};
                     [wheelStim,wheelChoice,wheelReward] = fn_parseTrialTC(wheel,beh);
 
@@ -239,31 +262,77 @@ classdef Animal
                     obj.sessionInfo.tuning{j} = obj.sessionInfo.TC{j}';
                 end 
             end 
+            if ismember('behSel',obj.sessionInfo.Properties.VariableNames)
+                obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
+            end
             obj.sessionInfo.TC = [];
             function mat = trimTC(mat,trimFrame)
                 if size(mat,2) > trimFrame ; mat = mat(:,1:trimFrame,:); end 
 
             end 
+            function [behTrim,keepTrial] = trimBehToRecording(beh,nFrames)
+                preFrameStim = 30;
+                preFrameChoice = 30;
+                rewardFrameShift = 3;
+                stimFrame = beh(:,7);
+                choiceFrame = beh(:,8);
+                rewardFrame = choiceFrame + rewardFrameShift;
+                validTrial = isfinite(stimFrame) & isfinite(choiceFrame) & ...
+                    stimFrame - preFrameStim >= 1 & ...
+                    choiceFrame - preFrameChoice >= 1 & ...
+                    stimFrame <= nFrames & ...
+                    choiceFrame <= nFrames & ...
+                    rewardFrame <= nFrames;
+                keepTrial = find(validTrial);
+                behTrim = beh(keepTrial,:);
+            end
+            function behSelTrim = trimBehSel(behSel,keepTrial)
+                behSelTrim = behSel(keepTrial,:);
+            end
         end 
 
-        function obj = parseDay(obj,trackingStr)
-            if ~exist('trackingStr'); trackingStr = ''; end 
-            if strcmp(trackingStr,'tracking')
+        function obj = parseDay(obj,trackingStr,varargin)
+            if ~exist('trackingStr','var'); trackingStr = ''; end
+            if ~isempty(varargin) && isnumeric(varargin{1})
+                varargin = [{'minSessionsPerLearningPeriod'}, varargin];
+            elseif ~isempty(varargin) && isTextScalar(varargin{1}) && ~isParseDayParameter(varargin{1})
+                varargin = [{'trackingMode'}, varargin];
+            end
+            p = inputParser;
+            addParameter(p,'trackingMode','stageBalanced');
+            addParameter(p,'minSessionsPerLearningPeriod',8);
+            parse(p,varargin{:});
+            trackingMode = p.Results.trackingMode;
+            minSessionsPerLearningPeriod = p.Results.minSessionsPerLearningPeriod;
+            sessionInfoAll = obj.sessionInfo;
+            tempSessionInfo = filterNeuralSessions(sessionInfoAll);
+            if strcmpi(trackingStr,'tracking')
+                % selTracking reads obj.sessionInfo, so temporarily give it
+                % only sessions that contain aligned neural/behavior trials.
+                % Restore the full table afterward so raw behavior is retained.
+                obj.sessionInfo = tempSessionInfo;
                 noRecordingFlag = cellfun(@isempty,obj.sessionInfo.ishere);
                 obj.sessionInfo = obj.sessionInfo(~noRecordingFlag,:);
-                [ishereAllSession,ishereCount,sessionSel] = obj.selTracking();
-                sessionSel = sessionSel{obj.ops.trackingSessionSel};
+                [ishereAllSession,ishereCount,sessionSel] = obj.selTracking(trackingMode,...
+                    'minSessionsPerLearningPeriod',minSessionsPerLearningPeriod);
+                if strcmpi(trackingMode,'unrestrainedDays')
+                    nSel = min(obj.ops.trackingSessionSel,length(sessionSel));
+                else
+                    nSel = length(sessionSel);
+                end
+                sessionSel = sessionSel{nSel};
                 sessionSel = sort(sessionSel);
                 tempSessionInfo = obj.sessionInfo(sessionSel,:);
-                ishereAllSession = ishereAllSession{obj.ops.trackingSessionSel};
-            else
-                tempSessionInfo = obj.sessionInfo; 
-            end 
+                ishereAllSession = ishereAllSession{nSel};
+                obj.sessionInfo = sessionInfoAll;
+            end
             dayInfo = table();
             days = unique(tempSessionInfo.date);
             dayInfo.date = days;
+            dayInfo.dayLabel = repmat({''},length(days),1);
             for i = 1:length(days)
                 selDay = find(tempSessionInfo.date == days(i));
+                dayInfo.dayLabel{i} = getDayLabel(tempSessionInfo,selDay);
                 %tempIshere = cellfun(@nansum,obj.sessionInfo.ishere(selDay));
                 %selDay(tempIshere<(0.65*length(obj.sessionInfo.ishere{1}))) = [];
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffStim',selDay, i,3);
@@ -291,35 +360,323 @@ classdef Animal
                 dayInfo.isheresum{i} = sum(tempHere);
                 dayInfo.roi{i} = tempSessionInfo.roi{selDay(1)};
             end 
-            if strcmp(trackingStr,'tracking')
+            if strcmpi(trackingStr,'tracking')
                 obj.ops.ishereAll = ishereAllSession; 
             end 
             emptyFlag = cellfun(@isempty,dayInfo.dffStim); 
             dayInfo(emptyFlag,:) = [];
+            if strcmpi(trackingStr,'tracking') && strcmpi(trackingMode,'unrestrainedDays')
+                dayInfo = applyManualChunkLabels(dayInfo);
+            end
             obj.dayInfo = dayInfo;
 
             function dayInfo = catData(sessionInfo,dayInfo, fieldStr,selDay, idx,catDim)
                 temp = sessionInfo.(fieldStr)(selDay);
-                dayInfo.(fieldStr){idx} = cat(catDim, temp{:});
-
-
+                if catDim == 3
+                    temp = reshapeEmptyTrialArrays(temp);
+                end
+                try
+                    dayInfo.(fieldStr){idx} = cat(catDim, temp{:});
+                catch
+                    disp('dimension wrong')
+                end
             end 
+            function filteredSessionInfo = filterNeuralSessions(sessionInfo)
+                nSession = height(sessionInfo);
+                excludeFlag = false(nSession,1);
+                if ismember('excludeNeuralAnalysis',sessionInfo.Properties.VariableNames)
+                    explicitExclude = logical(sessionInfo.excludeNeuralAnalysis);
+                    explicitExclude(~isfinite(double(explicitExclude))) = false;
+                    excludeFlag = excludeFlag | explicitExclude;
+                    if any(explicitExclude)
+                        fprintf('parseDay: excluding %d session(s) marked excludeNeuralAnalysis.\n', ...
+                            sum(explicitExclude));
+                    end
+                end
+
+                hasBehavior = ismember('behSel',sessionInfo.Properties.VariableNames);
+                neuralFields = {'dffStim','dffChoice'};
+                for iField = 1:numel(neuralFields)
+                    fieldName = neuralFields{iField};
+                    if ~ismember(fieldName,sessionInfo.Properties.VariableNames)
+                        continue
+                    end
+                    neuralData = sessionInfo.(fieldName);
+                    excludeFlag = excludeFlag | cellfun(@isempty,neuralData);
+                    if ~hasBehavior
+                        continue
+                    end
+                    for iSession = 1:nSession
+                        nBehaviorTrial = getBehaviorTrialCount(sessionInfo.behSel{iSession});
+                        nNeuralTrial = getNeuralTrialCount(neuralData{iSession});
+                        if nBehaviorTrial ~= nNeuralTrial
+                            excludeFlag(iSession) = true;
+                            warning('Animal:TrialCountMismatch', ...
+                                ['Excluding session row %d (date %g, session %g): ' ...
+                                'behSel has %d trials but %s has %d.'], ...
+                                iSession,getNumericTableValue(sessionInfo,'date',iSession), ...
+                                getNumericTableValue(sessionInfo,'session',iSession), ...
+                                nBehaviorTrial,fieldName,nNeuralTrial);
+                        end
+                    end
+                end
+
+                if any(excludeFlag)
+                    fprintf('parseDay: using %d/%d sessions after neural/behavior validation.\n', ...
+                        sum(~excludeFlag),nSession);
+                end
+                filteredSessionInfo = sessionInfo(~excludeFlag,:);
+            end
+            function nTrial = getBehaviorTrialCount(behaviorData)
+                if isempty(behaviorData)
+                    nTrial = 0;
+                elseif istable(behaviorData)
+                    nTrial = height(behaviorData);
+                else
+                    nTrial = size(behaviorData,1);
+                end
+            end
+            function nTrial = getNeuralTrialCount(neuralData)
+                if isempty(neuralData)
+                    nTrial = 0;
+                else
+                    nTrial = size(neuralData,3);
+                end
+            end
+            function value = getNumericTableValue(inputTable,fieldName,rowIdx)
+                value = nan;
+                if ismember(fieldName,inputTable.Properties.VariableNames)
+                    tempValue = inputTable.(fieldName)(rowIdx);
+                    if iscell(tempValue)
+                        tempValue = tempValue{1};
+                    end
+                    if isnumeric(tempValue) && isscalar(tempValue)
+                        value = tempValue;
+                    end
+                end
+            end
+            function label = getDayLabel(sessionInfo,selDay)
+                label = '';
+                if ~ismember('dayLabel',sessionInfo.Properties.VariableNames)
+                    return
+                end
+                tempLabel = sessionInfo.dayLabel(selDay);
+                if ~iscell(tempLabel)
+                    tempLabel = cellstr(string(tempLabel));
+                end
+                tempLabel = tempLabel(~cellfun(@isempty,tempLabel));
+                if isempty(tempLabel)
+                    return
+                end
+                uniqueLabel = unique(tempLabel,'stable');
+                taskPart = regexprep(uniqueLabel,'[EML]$','');
+                if any(strcmp(uniqueLabel,'Int')) || ...
+                        (any(strcmp(taskPart,'T1')) && any(strcmp(taskPart,'T2')))
+                    label = 'Int';
+                else
+                    label = uniqueLabel{1};
+                end
+            end
+            function temp = reshapeEmptyTrialArrays(temp)
+                nonEmptyIdx = find(cellfun(@(x)(~isempty(x) && size(x,3) > 0),temp),1,'first');
+                if isempty(nonEmptyIdx)
+                    nonEmptyIdx = find(cellfun(@(x)(~isempty(x)),temp),1,'first');
+                end
+                if isempty(nonEmptyIdx)
+                    return
+                end
+                templateSize = size(temp{nonEmptyIdx});
+                if numel(templateSize) < 3
+                    templateSize(3) = 1;
+                end
+                for ii = 1:length(temp)
+                    if isempty(temp{ii}) || size(temp{ii},3) == 0
+                        temp{ii} = nan(templateSize(1),templateSize(2),0,'single');
+                    end
+                end
+            end 
+            function dayInfo = applyManualChunkLabels(dayInfo)
+                if ~isfield(obj.ops,'chunkDays') || isempty(obj.ops.chunkDays)
+                    warning('trackingMode unrestrainedDays was used, but obj.ops.chunkDays is empty. Keeping existing dayInfo.dayLabel.')
+                    return
+                end
+                labelOrder = {'T1E','T1M','T1L','T2E','T2M','T2L','Int'};
+                manualChunks = obj.ops.chunkDays;
+                if length(manualChunks) > length(labelOrder)
+                    warning('obj.ops.chunkDays has %d chunks; only the first %d will be labeled as T1E..Int.', ...
+                        length(manualChunks),length(labelOrder))
+                end
+
+                dayInfo.dayLabel = repmat({''},height(dayInfo),1);
+                nLabelChunk = min(length(manualChunks),length(labelOrder));
+                for ii = 1:nLabelChunk
+                    selDay = manualChunks{ii};
+                    selDay = selDay(selDay >= 1 & selDay <= height(dayInfo));
+                    if isempty(selDay)
+                        fprintf('parseDay unrestrainedDays: manual %s chunk has no valid day rows.\n',labelOrder{ii});
+                        continue
+                    end
+                    dayInfo.dayLabel(selDay) = labelOrder(ii);
+                    fprintf('parseDay unrestrainedDays: labeling day rows [%s] as %s.\n', ...
+                        num2str(selDay(:)'),labelOrder{ii});
+                end
+            end
+            function tf = isTextScalar(value)
+                tf = ischar(value) || (isstring(value) && isscalar(value));
+            end
+            function tf = isParseDayParameter(value)
+                value = lower(char(value));
+                tf = any(strcmp(value,{'trackingmode','minsessionsperlearningperiod'}));
+            end
         end 
 
-        function [ishereSession,sessionCount,sessionSel] = selTracking(obj)
+        function [ishereSession,sessionCount,sessionSel] = selTracking(obj,trackingMode,varargin)
+            if ~exist('trackingMode','var') || isempty(trackingMode); trackingMode = 'stageBalanced'; end
+            p = inputParser;
+            addParameter(p,'minSessionsPerLearningPeriod',8);
+            parse(p,varargin{:});
+            minSessionsPerLearningPeriod = p.Results.minSessionsPerLearningPeriod;
+            if ~isnumeric(minSessionsPerLearningPeriod)
+                error('minSessionsPerLearningPeriod must be numeric.')
+            end
+            if isempty(minSessionsPerLearningPeriod)
+                minSessionsPerLearningPeriod = 8;
+            else
+                minSessionsPerLearningPeriod = minSessionsPerLearningPeriod(1);
+            end
+            if isnan(minSessionsPerLearningPeriod)
+                minSessionsPerLearningPeriod = 8;
+            end
+            minSessionsPerLearningPeriod = max(1,ceil(minSessionsPerLearningPeriod));
             tempTrackingSession = fn_cell2mat(obj.sessionInfo.ishere,1); 
             offsetMap = fn_cell2mat(obj.sessionInfo.offsetMap,3);
 
             avgOffset = squeeze(nanmean(nanmean(offsetMap,1),2))...
                 - obj.alignmentOps.refStackSelLoc(4); 
-            [~,sortIdx] = sort(abs(avgOffset),'ascend');
-            for k = 1:size(tempTrackingSession,1)
-                temp = tempTrackingSession(sortIdx(1:k),:);
-                ishereSession{k} = all(temp,1);
-                sessionCount(k) = sum(ishereSession{k});
-                sessionSel{k} = sortIdx(1:k);
-                % add day number on the original matrix 
+            ishereMat = tempTrackingSession == 1;
+            nSession = size(ishereMat,1);
+            nNeuron = size(ishereMat,2);
+            singleSessionCount = sum(ishereMat,2);
+
+            switch lower(trackingMode)
+                case {'unrestraineddays','unrestrained'}
+                    [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays();
+                case {'stagebalanced','stages','stage'}
+                    [ishereSession,sessionCount,sessionSel] = selectStageBalanced();
+                otherwise
+                    error('Unknown tracking mode: %s',trackingMode)
+            end
+
+            function [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays()
+            selectedIdx = [];
+            availableIdx = true(nSession,1);
+            currentHere = true(1,nNeuron);
+            ishereSession = {};
+            sessionCount = [];
+            sessionSel = {};
+
+            for k = 1:nSession
+                candidateIdx = find(availableIdx);
+                bestIdx = chooseBestCandidate(candidateIdx,currentHere);
+
+                selectedIdx = [selectedIdx; bestIdx];
+                availableIdx(bestIdx) = false;
+                currentHere = currentHere & ishereMat(bestIdx,:);
+
+                ishereSession{k} = currentHere;
+                sessionCount(k) = sum(currentHere);
+                sessionSel{k} = selectedIdx;
             end 
+            fprintf('selTracking unrestrainedDays: selected %d sessions; %d common neurons.\n', ...
+                length(selectedIdx),sessionCount(end));
+            end
+
+            function [ishereSession,sessionCount,sessionSel] = selectStageBalanced()
+            stageLabels = {'T1E','T1M','T1L','T2E','T2M','T2L','Int'};
+            if ~ismember('dayLabel',obj.sessionInfo.Properties.VariableNames)
+                warning('dayLabel not found in sessionInfo. Falling back to unrestrainedDays tracking.')
+                [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays();
+                return
+            end
+
+            dayLabel = obj.sessionInfo.dayLabel;
+            if ~iscell(dayLabel)
+                dayLabel = cellstr(string(dayLabel));
+            end
+            nPerStage = minSessionsPerLearningPeriod;
+            stageAvailable = zeros(length(stageLabels),1);
+            activeStageFlag = true(length(stageLabels),1);
+            for stageIdx = 1:length(stageLabels)
+                stageAvailable(stageIdx) = sum(strcmp(dayLabel,stageLabels{stageIdx}));
+                if stageAvailable(stageIdx) == 0
+                    activeStageFlag(stageIdx) = false;
+                    fprintf('selTracking stageBalanced: skipping %s, no sessions found.\n',stageLabels{stageIdx});
+                end
+            end
+            activeStageLabels = stageLabels(activeStageFlag);
+            if isempty(activeStageLabels)
+                warning('No learning period has enough sessions for stageBalanced tracking. Falling back to unrestrainedDays tracking.')
+                [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays();
+                return
+            end
+
+            selectedIdx = [];
+            availableIdx = true(nSession,1);
+            currentHere = true(1,nNeuron);
+            ishereSession = {};
+            sessionCount = [];
+            sessionSel = {};
+            k = 0;
+
+            for roundIdx = 1:nPerStage
+                for stageIdx = 1:length(activeStageLabels)
+                    candidateIdx = find(availableIdx & strcmp(dayLabel,activeStageLabels{stageIdx}));
+                    if isempty(candidateIdx)
+                        continue
+                    end
+                    bestIdx = chooseBestCandidate(candidateIdx,currentHere);
+                    selectedIdx = [selectedIdx; bestIdx];
+                    availableIdx(bestIdx) = false;
+                    currentHere = currentHere & ishereMat(bestIdx,:);
+
+                    k = k + 1;
+                    ishereSession{k} = currentHere;
+                    sessionCount(k) = sum(currentHere);
+                    sessionSel{k} = selectedIdx;
+                end
+            end
+
+            if isempty(selectedIdx)
+                warning('No sessions matched T1E/T1M/T1L/T2E/T2M/T2L/Int labels. Falling back to unrestrainedDays tracking.')
+                [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays();
+                return
+            end
+
+            fprintf('selTracking stageBalanced: selected %d sessions; %d common neurons.\n', ...
+                length(selectedIdx),sessionCount(end));
+            fprintf('  target per learning period: %d sessions\n',nPerStage);
+            for stageIdx = 1:length(stageLabels)
+                nAvailable = stageAvailable(stageIdx);
+                nSelected = sum(strcmp(dayLabel(selectedIdx),stageLabels{stageIdx}));
+                fprintf('  %s: selected %d/%d sessions\n',stageLabels{stageIdx},nSelected,nAvailable);
+            end
+            end
+
+            function bestIdx = chooseBestCandidate(candidateIdx,currentHere)
+            candidateCount = nan(length(candidateIdx),1);
+            for c = 1:length(candidateIdx)
+                candidateCount(c) = sum(currentHere & ishereMat(candidateIdx(c),:));
+            end
+
+            candidateOffset = abs(avgOffset(candidateIdx));
+            if numel(candidateOffset) ~= numel(candidateCount)
+                candidateOffset = nan(size(candidateCount));
+            end
+            candidateOffset(isnan(candidateOffset)) = inf;
+            candidateSingleCount = singleSessionCount(candidateIdx);
+            [~,sortOrder] = sortrows([-candidateCount(:), -candidateSingleCount(:), candidateOffset(:)]);
+            bestIdx = candidateIdx(sortOrder(1));
+            end
         end 
 
         function [obj,selTable] = selNeuronTime(obj,varargin)
@@ -353,8 +710,16 @@ classdef Animal
 
         end 
       
-        function obj = chunkDays(obj,chunks,selectedVar)
+        function obj = chunkDays(obj,selectedVar,chunks)
             dataTable = obj.dayInfo;
+            if nargin < 2 || isempty(selectedVar)
+                error('selectedVar is required. Use obj.chunkDays(selectedVar) or obj.chunkDays(selectedVar,chunks).')
+            end
+            if nargin < 3 || isempty(chunks)
+                [chunks,chunkLabels] = getLabelChunks(dataTable);
+            else
+                chunkLabels = repmat({''},numel(chunks),1);
+            end
             % Chunk a per-day table into larger aggregated table based on day groups
             % Inputs:
             %   - dataTable: (ndays × m) table
@@ -362,21 +727,24 @@ classdef Animal
             %   - selectedVar (optional): string, name of a variable in the table to return only
             % Output:
             %   - outTable: table where each row corresponds to a chunk
-            if nargin < 3
-                varNames = dataTable.Properties.VariableNames;
+            if ischar(selectedVar) || isstring(selectedVar)
+                selectedVar = cellstr(string(selectedVar));
+            end
+            if all(ismember(selectedVar, dataTable.Properties.VariableNames))
+                varNames = selectedVar;
             else
-                if ismember(selectedVar, dataTable.Properties.VariableNames)
-                    varNames = selectedVar;
-                else
-                    warning('Variable "%s" not found in table. Returning full table.', selectedVar);
-                    varNames = dataTable.Properties.VariableNames;
-                end
+                missingVar = selectedVar(~ismember(selectedVar, dataTable.Properties.VariableNames));
+                error('Selected variable(s) not found in dayInfo: %s',strjoin(missingVar,', '))
             end        
             nChunks = numel(chunks);
             outTable = table();      
             for v = 1:numel(varNames)                 
                 for i = 1:nChunks
                     days = chunks{i};
+                    if isempty(days)
+                        outTable.(varNames{v}){i} = [];
+                        continue
+                    end
                     val = dataTable{days, varNames{v}};         
                     if istable(val)
                         combined = vertcat(val{:});  
@@ -407,6 +775,32 @@ classdef Animal
             end
             obj.chunkedDayInfo = outTable; 
             obj.ops.chunkDays = chunks; 
+            obj.ops.chunkDaysLabel = chunkLabels;
+            function [chunks,chunkLabels] = getLabelChunks(dayInfo)
+                if ~ismember('dayLabel',dayInfo.Properties.VariableNames)
+                    error('dayInfo.dayLabel is required for label-based chunking. Pass chunks as the third input to use manual chunks.')
+                end
+                labelOrder = {'T1E','T1M','T1L','T2E','T2M','T2L','Int'};
+                dayLabel = dayInfo.dayLabel;
+                if ~iscell(dayLabel)
+                    dayLabel = cellstr(string(dayLabel));
+                end
+                chunks = {};
+                chunkLabels = {};
+                for ii = 1:length(labelOrder)
+                    selDay = find(strcmp(dayLabel,labelOrder{ii}));
+                    if isempty(selDay)
+                        fprintf('chunkDays: no days found for %s; skipping this chunk.\n',labelOrder{ii});
+                        continue
+                    end
+                    chunks{end+1} = selDay;
+                    chunkLabels{end+1} = labelOrder{ii};
+                    fprintf('chunkDays: %s uses day rows [%s].\n',labelOrder{ii},num2str(selDay(:)'));
+                end
+                if isempty(chunks)
+                    error('No labeled day chunks found. Check dayInfo.dayLabel.')
+                end
+            end
         end 
         
         function [obj,trialTypeInfo] = selTrialType(obj,varargin)
@@ -470,8 +864,9 @@ classdef Animal
                 if iscell(tempVar)
                     newVar = cell(1,length(stim));
                     for i = 1:length(stim)
-                         
+                          
                         tempContent = tempVar{1}; 
+                        validateTrialMaskLengths(tempVar,selFlag{i},varNames{j},i,tempContent);
                         if isnumeric(tempContent)
                             if ~isscalar(tempContent) && ndims(tempContent)==3
                                 newVar{i}= cellfun(@(x,y)(x(:,:,y)),tempVar,selFlag{i},'UniformOutput',false);
@@ -493,14 +888,47 @@ classdef Animal
                 end 
             end   
             obj.trialTypeInfo = outmat;
-            trialTypeInfo = outmat;       
+            trialTypeInfo = outmat;
+
+            function validateTrialMaskLengths(dataCell,flagCell,varName,trialTypeIdx,tempContent)
+                if numel(dataCell) ~= numel(flagCell)
+                    error('Animal:ChunkCountMismatch', ...
+                        ['Variable %s contains %d chunks, but trial-type mask %d ' ...
+                        'contains %d chunks.'], ...
+                        varName,numel(dataCell),trialTypeIdx,numel(flagCell));
+                end
+                for iChunk = 1:numel(dataCell)
+                    dataValue = dataCell{iChunk};
+                    expectedTrial = numel(flagCell{iChunk});
+                    if isempty(dataValue)
+                        actualTrial = 0;
+                    elseif istable(dataValue)
+                        actualTrial = height(dataValue);
+                    elseif isnumeric(dataValue) || islogical(dataValue)
+                        if startsWith(lower(varName),'dff') || ndims(tempContent)==3
+                            actualTrial = size(dataValue,3);
+                        else
+                            actualTrial = size(dataValue,2);
+                        end
+                    else
+                        continue
+                    end
+                    if expectedTrial ~= actualTrial
+                        error('Animal:TrialCountMismatch', ...
+                            ['Cannot select trial type %d from variable %s, chunk %d: ' ...
+                            'behavior mask has %d trials but the data contain %d. ' ...
+                            'Check session-level exclusions before chunking.'], ...
+                            trialTypeIdx,varName,iChunk,expectedTrial,actualTrial);
+                    end
+                end
+            end
         end   
 
         function [obj,chunkedDayInfo,trialTypeInfo] = chunkDaysByTrialType(obj,selVar,varargin)
             % selectVar: e.g. {'choice','behSel'}
             % varargin: selTime, chunkDays,selProp,stim,choice
             p = inputParser;
-            addParameter(p, 'chunkDays', obj.ops.chunkDays);
+            addParameter(p, 'chunkDays', []);
             addParameter(p, 'selProp', 'chunkedDayInfo');
             addParameter(p, 'stim', [1,1,2,2,3,3,4,4]);
             addParameter(p, 'choice', [1,2,1,2,1,2,1,2]);
@@ -509,7 +937,7 @@ classdef Animal
             parse(p, varargin{:});
 
             trialStart = 30; if ~isempty(p.Results.selTime); trialStart = trialStart-p.Results.selTime(1)+1; end 
-            obj = obj.chunkDays(obj.ops.chunkDays,selVar);
+            obj = obj.chunkDays(selVar,p.Results.chunkDays);
             obj = obj.selNeuronTime('selProp',p.Results.selProp,'selNeuron',obj.ops.ishereAll,'selTime',p.Results.selTime,'replace',true);
             % also parse wheel time
             if ismember('wheelStim',obj.chunkedDayInfo.Properties.VariableNames)
@@ -857,17 +1285,21 @@ function actCell = loadTC(TCname,keyField)
          actCell = temp.(keyField); clear temp;
          actCell = cellfun(@single,actCell,'UniformOutput',false);
      end 
+     reportActCellNan(actCell,keyField,'after load');
      toc; disp('Loading data done!')
 end 
 
 % HELPER FUNCTIONS -- LOAD TC
 function actCell = spkNorm(actCell)
+    reportActCellNan(actCell,'spk','before normalization');
     spkVarBef = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);   
     spkMeanBef = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);    
     spkNorm = zeros(length(actCell),size(actCell{1},2)); 
     for i = 1:length(actCell)
         for j =1:size(actCell{i},2)
-            temp = norm(actCell{i}(:,j)); 
+            tempTrace = actCell{i}(:,j);
+            tempTrace = tempTrace(isfinite(tempTrace));
+            temp = norm(tempTrace); 
             spkNorm(i,j) = temp;
         end 
     end 
@@ -875,24 +1307,49 @@ function actCell = spkNorm(actCell)
     b = fn_cell2mat(cellfun(@(x)(size(x,1)),actCell,'UniformOutput',false),1);
     b = b./ sum(b);
     meanA = b' * spkNorm;
+    badNorm = ~isfinite(meanA) | meanA == 0;
+    if any(badNorm)
+        fprintf('spkNorm: %d neurons had zero/invalid normalization; leaving those neurons unscaled.\n',sum(badNorm));
+        meanA(badNorm) = 1;
+    end
     
     for i = 1:length(actCell)
         actCell{i} = actCell{i} ./ repmat(meanA,[size(actCell{i},1) 1]);
     end 
+    reportActCellNan(actCell,'spk','after normalization');
     spkVarAft = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);
     spkMeanAft = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);
 end 
+
+function reportActCellNan(actCell,keyField,stageName)
+    if isempty(actCell)
+        fprintf('%s %s: empty cell array.\n',keyField,stageName);
+        return
+    end
+    nCell = numel(actCell);
+    nAll = 0;
+    nNan = 0;
+    nAllNanCell = 0;
+    for i = 1:nCell
+        if isempty(actCell{i})
+            continue
+        end
+        nAll = nAll + numel(actCell{i});
+        nNan = nNan + sum(isnan(actCell{i}(:)));
+        nAllNanCell = nAllNanCell + all(isnan(actCell{i}(:)));
+    end
+    if nAll > 0
+        fprintf('%s %s: %.3f%% NaN values across %d cells; %d all-NaN cells.\n', ...
+            keyField,stageName,100*nNan/nAll,nCell,nAllNanCell);
+    end
+end
 
 % HELPER FUNCTIONS -- LOAD sessionInf, rename the table variables
 function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingName,alignOpsPath,obj)
     % load sessionInfo
     load(infoName,'sessionInfo','animalID'); 
 
-    sessionInfo = renamevars(sessionInfo, 'SessionName', 'sessionName');
-    sessionInfo = renamevars(sessionInfo, 'SessionDate', 'date');
-    sessionInfo = renamevars(sessionInfo, 'SessionType', 'sessionType');
-    sessionInfo = renamevars(sessionInfo, 'SessionNumber', 'session');
-    sessionInfo = renamevars(sessionInfo, 'SessionFrames', 'frames');
+    sessionInfo = normalizeSessionInfo(sessionInfo);
 
     if isempty(actCell)
         sessionInfo.TC(:) = nan; 
@@ -925,6 +1382,25 @@ function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingNa
     sessionInfo.goodTracking = cellFlag;
     % sessionInfo.TC(~cellFlag) = {[]};
 end 
+
+function sessionInfo = normalizeSessionInfo(sessionInfo)
+    if isstruct(sessionInfo)
+        sessionInfo = struct2table(sessionInfo);
+    end
+
+    sessionInfo = renameSessionInfoVar(sessionInfo,'SessionName','sessionName');
+    sessionInfo = renameSessionInfoVar(sessionInfo,'SessionDate','date');
+    sessionInfo = renameSessionInfoVar(sessionInfo,'SessionType','sessionType');
+    sessionInfo = renameSessionInfoVar(sessionInfo,'SessionNumber','session');
+    sessionInfo = renameSessionInfoVar(sessionInfo,'SessionFrames','frames');
+end
+
+function sessionInfo = renameSessionInfoVar(sessionInfo,oldName,newName)
+    varNames = sessionInfo.Properties.VariableNames;
+    if ismember(oldName,varNames) && ~ismember(newName,varNames)
+        sessionInfo.Properties.VariableNames{strcmp(varNames,oldName)} = newName;
+    end
+end
 
 
 % HELPTER FUNCTION -- MATCH RT IN TRIALTYPEINFO

@@ -19,6 +19,7 @@ mkdir([ops.elastixPath filesep 'alignedElastix_param']);
 % process mean image from suite2p if necessary, ignore this step now
 %fn_splitSuite2pSessionImg(ops.imagingPath, ops.roiTrackingPath);
 output = fn_dirfun(ops.imagingPath,@saveSuite2pMeanImg);
+checkMeanImgEnhancedSize(output);
 
 meanImgEnhanced = cellfun(@(x)(x{1}),output,'UniformOutput',false);
 meanImgEnhanced = fn_cell2mat(meanImgEnhanced,3); 
@@ -54,6 +55,44 @@ fn_saveMP4(ops.meanImgEnhanced,[ops.elastixPath filesep 'rawElastix' filesep ops
         meanImg = suite2pOps.ops.meanImg'; 
         meanImgEnhanced = enhancedImage(meanImg);    
     end 
+
+    function checkMeanImgEnhancedSize(output)
+        nSession = length(output);
+        imgSize = nan(nSession,2);
+        sessionPath = cell(nSession,1);
+
+        for ii = 1:nSession
+            tempImg = output{ii}{1};
+            sessionPath{ii} = output{ii}{2};
+            tempSize = size(tempImg);
+            imgSize(ii,:) = tempSize(1:2);
+        end
+
+        [uniqueSize,~,sizeGroup] = unique(imgSize,'rows');
+        sizeCount = accumarray(sizeGroup,1);
+        [~,expectedIdx] = max(sizeCount);
+        expectedSize = uniqueSize(expectedIdx,:);
+
+        fprintf('Checking Suite2p meanImgEnhanced sizes before creating ops...\n');
+        for ii = 1:nSession
+            fprintf('  session %03d: %d x %d | %s\n', ...
+                ii,imgSize(ii,1),imgSize(ii,2),sessionPath{ii});
+        end
+        fprintf('Expected meanImgEnhanced size: %d x %d (%d/%d sessions)\n', ...
+            expectedSize(1),expectedSize(2),sizeCount(expectedIdx),nSession);
+
+        badSize = imgSize(:,1) ~= expectedSize(1) | imgSize(:,2) ~= expectedSize(2);
+        if any(badSize)
+            fprintf('\nERROR: Wrong meanImgEnhanced size detected. Fix these sessions before continuing:\n');
+            badIdx = find(badSize);
+            for jj = 1:length(badIdx)
+                ii = badIdx(jj);
+                fprintf('  session %03d: %d x %d, expected %d x %d | %s\n', ...
+                    ii,imgSize(ii,1),imgSize(ii,2),expectedSize(1),expectedSize(2),sessionPath{ii});
+            end
+            error('step1_createOps stopped because at least one meanImgEnhanced has the wrong size.');
+        end
+    end
 
 end 
 

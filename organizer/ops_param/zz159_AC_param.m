@@ -3,14 +3,13 @@ myOps.area = 'AC';
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 
 
-
+myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\']; 
 myOps.TCpath = ['C:\Users\zzhu34\Documents\tempdata\' myOps.ID];
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
-myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior'];
-myOps.alignOpsPath = ['G:\rockfish\ziyi\' myOps.ID];
+myOps.alignOpsPath = ['C:\Users\zzhu34\Documents\tempdata\' myOps.ID];
 
 myOps.dayT1 = [20240516,20240522];
 myOps.dayT1_expert = [20240516,20240522];

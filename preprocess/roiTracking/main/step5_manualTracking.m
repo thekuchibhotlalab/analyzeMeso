@@ -9,7 +9,7 @@ function step5_manualTracking(datapath)
         disp('ROI mat file exist, loading ROI. Starting at roi number ')
     else
         stackROI = initiateStackROI(ops);
-        stackROI.refStackSel = loadRefstacksel(ops.refStackReconPath)/65536; 
+        stackROI.refStackSel = loadRefstacksel(ops.refStackReconPath,ops.refStackSelLoc)/65536; 
 
         stackROI.nDepth = size(stackROI.refStackSel,3); 
         nNeuron = length(stackROI.coordRaw);
@@ -26,19 +26,28 @@ function step5_manualTracking(datapath)
         save([datapath filesep 'stackROI.mat'],'stackROI');
         disp('ROI mat file does not exist. Creating roi mat file.')
     end
+    stackROI.refStackSel = loadRefstacksel(ops.refStackReconPath,ops.refStackSelLoc)/65536;
+    stackROI = syncStackROIDepths(stackROI);
     nNeuron = length(stackROI.coordRaw);
+    if ~isfield(stackROI,'nNeuronDone') || isempty(stackROI.nNeuronDone)
+        stackROI.nNeuronDone = 0;
+    end
+    stackROI.nNeuronDone = min(max(stackROI.nNeuronDone,0),nNeuron);
+    save([datapath filesep 'stackROI.mat'],'stackROI');
     refStackSel = stackROI.refStackSel;
-    nBatch = stackROI.nBatch;
     nDepth = stackROI.nDepth;
     
 
-    screenSize = get(0, 'ScreenSize');
-    figSize = [screenSize(3)*0.05, screenSize(4)*0.05, screenSize(3)*0.9, screenSize(4)*0.9];
-    fig = figure('Position', figSize, 'MenuBar', 'none', 'Name', 'ROI Tracker', ...
+    screenSize = getLargestMonitorPosition();
+    figSize = [screenSize(1)+screenSize(3)*0.05, screenSize(2)+screenSize(4)*0.05, ...
+               screenSize(3)*0.9, screenSize(4)*0.9];
+    fig = figure('Units','pixels','Position', figSize, 'MenuBar', 'none', 'Name', 'ROI Tracker', ...
                  'NumberTitle', 'off', 'Resize', 'off');
     % Parameters
     
-    nNeuronPerPlot = 10; roiImgSize = 20;
+    nNeuronPerPlot = max(10,2*nDepth); roiImgSize = 20;
+    fprintf('Loaded %d reconstructed depth images. Displaying %d ROI columns per batch.\n', ...
+        nDepth, nNeuronPerPlot);
     
     
     % Example initialization
@@ -48,11 +57,10 @@ function step5_manualTracking(datapath)
     % Create grid for images
     rows = nDepth;
     cols = min([nNeuronPerPlot nNeuron - stackROI.nNeuronDone]);
-    roiTemp = updateRoiTemp(nBatch,stackROI,refStackSel,roiImgSize);
+    if cols<=0; return; end
+    roiTemp = updateRoiTemp(stackROI,refStackSel,roiImgSize);
     copiedRedrawnCoord = [];
-    axHandles = createGrid(fig, rows, cols, roiTemp, margin);
-
-    if cols<=0; return; end 
+    axHandles = createGrid(fig, rows, nNeuronPerPlot, cols, roiTemp, margin);
     % Add Next button
     uicontrol(fig, 'Style', 'pushbutton', 'String', 'Next', ...
               'Position', [figSize(3)-100, 20, 80, 40], ...
@@ -134,41 +142,120 @@ function step5_manualTracking(datapath)
     end 
 
 
-    function img = loadRefstacksel(folder_path)
+    function img = loadRefstacksel(folder_path,refStackSelLoc)
         % Get a list of all files in the folder
-        files = dir([folder_path filesep '*.tiff']);
-        
-        % Extract the filenames
-        filenames = {files.name};
-        
-        % Filter filenames that contain 'refImg' but do not contain '_'
-        filtered_filenames = filenames(contains(filenames, 'refImg') & ~contains(filenames, '_'));
+        if nargin >= 2 && ~isempty(refStackSelLoc)
+            filtered_filenames = arrayfun(@(x)(['refImg' num2str(x,'%02d') '.tiff']), ...
+                refStackSelLoc(:)','UniformOutput',false);
+        else
+            files = dir([folder_path filesep '*.tiff']);
+            filenames = {files.name};
+            filtered_filenames = filenames(contains(filenames, 'refImg') & ~contains(filenames, '_'));
+        end
         img = {};
         for k = 1:length(filtered_filenames)
-            img{k} = double(imread([folder_path filesep filtered_filenames{k}]));
+            imgFile = [folder_path filesep filtered_filenames{k}];
+            if exist(imgFile,'file') ~= 2
+                error('Could not find reconstructed reference image: %s',imgFile);
+            end
+            img{k} = double(imread(imgFile));
         end 
         img = fn_cell2mat(img,3);
     end 
 
-    function axHandles = createGrid(fig, rows, cols, roiTemp, margin)
+    function stackROI = syncStackROIDepths(stackROI)
+        nDepthNew = size(stackROI.refStackSel,3);
+        nNeuronLocal = length(stackROI.coordRaw);
+        if ~isfield(stackROI,'nDepth') || stackROI.nDepth ~= nDepthNew
+            fprintf('Updating stackROI depth count from %d to %d reconstructed images.\n', ...
+                getFieldOrDefault(stackROI,'nDepth',0), nDepthNew);
+        end
+
+        coordRedrawnNew = cell(nDepthNew,nNeuronLocal);
+        centroidRedrawnNew = cell(nDepthNew,nNeuronLocal);
+        ishereNew = ones(nDepthNew,nNeuronLocal);
+        isRedrawnNew = ones(nDepthNew,nNeuronLocal);
+
+        for r = 1:nDepthNew
+            coordRedrawnNew(r,:) = stackROI.coordRaw;
+            centroidRedrawnNew(r,:) = stackROI.centroidRaw;
+        end
+
+        if isfield(stackROI,'coordRedrawn') && ~isempty(stackROI.coordRedrawn)
+            rowsToCopy = min(nDepthNew,size(stackROI.coordRedrawn,1));
+            colsToCopy = min(nNeuronLocal,size(stackROI.coordRedrawn,2));
+            coordRedrawnNew(1:rowsToCopy,1:colsToCopy) = stackROI.coordRedrawn(1:rowsToCopy,1:colsToCopy);
+        end
+        if isfield(stackROI,'centroidRedrawn') && ~isempty(stackROI.centroidRedrawn)
+            rowsToCopy = min(nDepthNew,size(stackROI.centroidRedrawn,1));
+            colsToCopy = min(nNeuronLocal,size(stackROI.centroidRedrawn,2));
+            centroidRedrawnNew(1:rowsToCopy,1:colsToCopy) = stackROI.centroidRedrawn(1:rowsToCopy,1:colsToCopy);
+        end
+        if isfield(stackROI,'ishere') && ~isempty(stackROI.ishere)
+            rowsToCopy = min(nDepthNew,size(stackROI.ishere,1));
+            colsToCopy = min(nNeuronLocal,size(stackROI.ishere,2));
+            ishereNew(1:rowsToCopy,1:colsToCopy) = stackROI.ishere(1:rowsToCopy,1:colsToCopy);
+        end
+        if isfield(stackROI,'isRedrawn') && ~isempty(stackROI.isRedrawn)
+            rowsToCopy = min(nDepthNew,size(stackROI.isRedrawn,1));
+            colsToCopy = min(nNeuronLocal,size(stackROI.isRedrawn,2));
+            isRedrawnNew(1:rowsToCopy,1:colsToCopy) = stackROI.isRedrawn(1:rowsToCopy,1:colsToCopy);
+        end
+
+        stackROI.nDepth = nDepthNew;
+        stackROI.coordRedrawn = coordRedrawnNew;
+        stackROI.centroidRedrawn = centroidRedrawnNew;
+        stackROI.ishere = ishereNew;
+        stackROI.isRedrawn = isRedrawnNew;
+    end
+
+    function value = getFieldOrDefault(s,fieldName,defaultValue)
+        if isfield(s,fieldName)
+            value = s.(fieldName);
+        else
+            value = defaultValue;
+        end
+    end
+
+    function screenSize = getLargestMonitorPosition()
+        try
+            monitorPositions = get(0,'MonitorPositions');
+        catch
+            monitorPositions = get(0,'ScreenSize');
+        end
+        if isempty(monitorPositions) || size(monitorPositions,2) ~= 4
+            monitorPositions = get(0,'ScreenSize');
+        end
+        [~,largestMonitorIdx] = max(monitorPositions(:,3).*monitorPositions(:,4));
+        screenSize = monitorPositions(largestMonitorIdx,:);
+        fprintf('ROI Tracker GUI using monitor %d of %d: [%d %d %d %d]\n', ...
+            largestMonitorIdx,size(monitorPositions,1),screenSize);
+    end
+
+    function axHandles = createGrid(fig, rows, plotCols, activeCols, roiTemp, margin)
         global imgPlot roiPlot rectPlot;
         % Create a grid of axes in the figure
         figPos = get(fig, 'Position');
-        width = (figPos(3) - margin * (cols + 1)) / cols;
+        width = (figPos(3) - margin * (plotCols + 1)) / plotCols;
         height = (figPos(4) - margin * (rows + 1)) / rows;
-        axHandles = cell(rows, cols);
+        axHandles = cell(rows, plotCols);
     
         imgPlot = {}; 
         roiPlot = {};
         rectPlot = {};
 
         for r = 1:rows
-            for c = 1:cols
+            for c = 1:plotCols
                 xPos = margin + (c-1) * (width + margin);
                 yPos = margin + (rows-r) * (height + margin);
                 ax = axes(fig, 'Position', [xPos / figPos(3), yPos / figPos(4), ...
                                             width / figPos(3), height / figPos(4)]);
                 axHandles{r, c} = ax;
+                if c > activeCols
+                    axis(ax,'off');
+                    set(ax,'Visible','off');
+                    continue;
+                end
                 imgPlot{r,c} = imagesc(ax, roiTemp.refImg{r, c}, [0.2, 0.8]);
 
                 colormap(ax, gray);
@@ -194,17 +281,18 @@ function step5_manualTracking(datapath)
         end
     end 
 
-    function roiTemp = updateRoiTemp(nBatch,stackROI,refStackSel,roiImgSize)
+    function roiTemp = updateRoiTemp(stackROI,refStackSel,roiImgSize)
         roiTemp = struct();
         roiTemp.ishere = ones(rows, cols);          
         roiTemp.isRedrawn = zeros(rows, cols);
+        roiTemp.corr = nan(rows, cols);
 
         roiTemp.coord = cell(rows,cols);
         roiTemp.coordRedrawn = cell(rows,cols);
         roiTemp.refImg = cell(rows,cols);
         tic;
         for c = 1:cols
-            neuronCount = c + nBatch * nNeuronPerPlot;
+            neuronCount = stackROI.nNeuronDone + c;
             for r = 1:rows
                 tempShiftX = (stackROI.centroidRaw{neuronCount}(1)); 
                 tempShiftY = (stackROI.centroidRaw{neuronCount}(2)); 
@@ -246,15 +334,44 @@ function step5_manualTracking(datapath)
                 %roiTemp.refImg{r, c} = refStackSel(selX,selY,r);  % Replace with actual image data
             end
             tempPatch = roiTemp.refImg(:, c);
-            tempPatchRef = tempPatch{round((rows+1)/2)};
+            refDepthIdx = round((rows+1)/2);
+            tempPatchRef = tempPatch{refDepthIdx};
+            corrMask = getRoiCorrelationMask(roiTemp.coord{refDepthIdx,c},size(tempPatchRef));
             for r = 1:rows
-                tempCorr = corr(tempPatch{r}(:), tempPatchRef(:));
-                [tempCorr] = fn_gaussianCorr(tempPatch{r}, tempPatchRef);
-                roiTemp.ishere(r,c) = tempCorr>0.8; 
+                tempCorr = maskedPearsonCorr(tempPatch{r},tempPatchRef,corrMask);
+                roiTemp.corr(r,c) = tempCorr;
+                roiTemp.ishere(r,c) = tempCorr>0.85; 
             end 
 
         end
         toc;
+    end 
+
+    function mask = getRoiCorrelationMask(coords,imgSize)
+        mask = false(imgSize(1),imgSize(2));
+        if isempty(coords) || any(isnan(coords(:)))
+            return;
+        end
+        row = coords(:,1);
+        col = coords(:,2);
+        validCoord = row >= 1 & row <= imgSize(1) & col >= 1 & col <= imgSize(2);
+        if sum(validCoord) < 3
+            return;
+        end
+        mask = poly2mask(col(validCoord),row(validCoord),imgSize(1),imgSize(2));
+        mask = conv2(double(mask),ones(5),'same') > 0;
+    end
+
+    function r = maskedPearsonCorr(img,refImg,mask)
+        validPix = mask & isfinite(img) & isfinite(refImg) & img ~= 0 & refImg ~= 0;
+        if sum(validPix(:)) < 5
+            r = -Inf;
+            return;
+        end
+        r = corr(img(validPix),refImg(validPix));
+        if isnan(r)
+            r = -Inf;
+        end
     end 
 
     function onImageClick(~, ~,row, col)
@@ -304,7 +421,9 @@ function step5_manualTracking(datapath)
         % Show existing ROI with lighter contour
         fill(roiTemp.coordRedrawn{row, col}(:,2), roiTemp.coordRedrawn{row, col}(:,1),matlabColors(1),'FaceColor', 'none', ...
              'EdgeColor', 'red', 'LineWidth', 2);
-        h = drawfreehand('Parent', gca, 'Color', 'blue');
+        h = drawfreehand('Parent', gca, 'Color', 'blue','Smoothing', 1, ...
+            'Multiclick', false, ...
+            'InteractionsAllowed', 'none');
         %wait(h);
         roiTemp.coordRedrawn{row, col} = h.Position(:,[2 1]);  % Update the redrawn ROI, first position is x (i.e. 900), second position is y (450)
         roiTemp.isRedrawn(row, col) = 1;            % Mark as redrawn
@@ -341,18 +460,19 @@ function step5_manualTracking(datapath)
         % Save current batch data and export to PDF
        
         % Clear and load the next batch
-        nBatch = nBatch + 1; 
         saveCurrentBatch();
         % Load new data for the next batch (example data here)
         cols = min([nNeuronPerPlot nNeuron - stackROI.nNeuronDone]);
         if cols<=0; return; end 
-        roiTemp = updateRoiTemp(nBatch,stackROI,refStackSel,roiImgSize);
+        roiTemp = updateRoiTemp(stackROI,refStackSel,roiImgSize);
         tic;
         for r = 1:rows
-            for c = 1:cols
-
-                tempROIplot = roiPlot{r,c}; delete(tempROIplot);
-                hold(axHandles{r, c}, 'off');
+            for c = 1:nNeuronPerPlot
+                clearGridSlot(r,c);
+                if c > cols
+                    continue;
+                end
+                set(axHandles{r, c}, 'Visible', 'on');
                 imgPlot{r,c} = imagesc(axHandles{r, c}, roiTemp.refImg{r, c}, [0.2, 0.8]);
     
                 colormap(axHandles{r, c}, gray);
@@ -379,11 +499,22 @@ function step5_manualTracking(datapath)
         toc;
     end
 
+    function clearGridSlot(row,col)
+        global roiPlot imgPlot rectPlot;
+        ax = axHandles{row,col};
+        cla(ax,'reset');
+        axis(ax,'off');
+        set(ax,'Visible','off');
+        imgPlot{row,col} = [];
+        roiPlot{row,col} = [];
+        rectPlot{row,col} = [];
+    end
+
     function saveCurrentBatch()
         % Save the current batch data and export the GUI view as a PDF
         tempUpdateIdx = stackROI.nNeuronDone+1:stackROI.nNeuronDone + cols;
         stackROI.nNeuronDone = stackROI.nNeuronDone + cols; 
-        stackROI.nBatch = nBatch; 
+        stackROI.nBatch = ceil(stackROI.nNeuronDone / nNeuronPerPlot); 
         
 
         for i = 1:size(roiTemp.coordRedrawn,1)
@@ -399,9 +530,10 @@ function step5_manualTracking(datapath)
         stackROI.isRedrawn(:,tempUpdateIdx) = roiTemp.isRedrawn;
         %figure; imagesc(refStackSel(:,:,2),[0.2, 0.8]); colormap('gray');hold on; fill(stackROI.coord{17}(:,1),stackROI.coord{17}(:,2),'black','FaceColor','none','EdgeColor','red');
 
-        figure; imagesc(refStackSel(:,:,4),[0.2, 0.8]); colormap('gray');hold on; 
+        centerDepthIdx = ceil(nDepth/2);
+        figure; imagesc(refStackSel(:,:,centerDepthIdx),[0.2, 0.8]); colormap('gray');hold on; 
         for i = 1:cols            
-            fill(roiTemp.coordRedrawn{4,i}(:,2),roiTemp.coordRedrawn{4,i}(:,1),'black','FaceColor','none','EdgeColor','red');
+            fill(roiTemp.coordRedrawn{centerDepthIdx,i}(:,2),roiTemp.coordRedrawn{centerDepthIdx,i}(:,1),'black','FaceColor','none','EdgeColor','red');
         end 
 
         save([datapath filesep 'stackROI.mat'],'stackROI');

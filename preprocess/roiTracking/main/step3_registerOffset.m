@@ -9,13 +9,14 @@ ops.refStackPath  = [ops.roiTrackingPath filesep 'refStack' ];
 savingPath = [ops.roiTrackingPath filesep 'offsetEvaluation'];
 mkdir(savingPath);
 Pix = 100;
-refStack = ops.refStackAligned;
+baseRefStack = ops.refStackAligned;
 
 tic;
 for i= 1:size(alignedOps.suite2pImg,3)
+    refStack = baseRefStack;
     % Simple elastix sometimes give werid shifts, so redo the rigid alignment here is necessary
     for k = 1:size(refStack,3)
-        [tempAligned,tempShift] = fn_fastAlign(cat(3, alignedOps.suite2pImg(:,:,i),refStack(:,:,k)),'center');
+        [tempAligned,~] = fn_fastAlign(cat(3, alignedOps.suite2pImg(:,:,i),refStack(:,:,k)),'center');
         refStack(:,:,k) = tempAligned(:,:,2);
     end 
     % Compute the z-offset

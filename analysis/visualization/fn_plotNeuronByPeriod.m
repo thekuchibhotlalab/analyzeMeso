@@ -16,6 +16,9 @@ function fn_plotNeuronByPeriod(T, neuronIdx, varargin)
 %   'padFrac'          : fraction padding added to auto y-lims (default: 0.05)
 %   'useSEMInYLim'     : include ±SEM in auto limits (default: true)
 %   'zscore'           : true to z-score each neuron per period (per trial-type) before averaging (default: false)
+%   'plotMode'         : 'task' (default) or 'compareTask'. compareTask plots
+%                        T1L vs T2L and T1R vs T2R across periods, uses
+%                        T1/T2 colors, and shares y-axis across rows.
 
 p = inputParser;
 addParameter(p,'alignVar','dffStim');
@@ -30,23 +33,43 @@ addParameter(p,'sameAxis',false);
 addParameter(p,'padFrac',0.05);
 addParameter(p,'useSEMInYLim',true);
 addParameter(p,'zscore',false);                 % <-- NEW
+addParameter(p,'plotMode','task');
 parse(p,varargin{:});
 
 %T = obj.trialTypeInfo.(p.Results.alignVar);  % {nPeriods×1}, each: {1×8}, inner: [nNeu × nTime × nTrials]
-assert(iscell(T) && ~isempty(T), 'trialTypeInfo.%s is empty; run chunkDaysByTrialType/selTrialType first.', p.Results.alignVar);
+%assert(iscell(T) && isempty(T), 'trialTypeInfo.%s is empty; run chunkDaysByTrialType/selTrialType first.', p.Results.alignVar);
 
 nPeriods = numel(T);
 periods = p.Results.periodIdx; if isempty(periods), periods = 1:nPeriods; end
 
 % trial-type sets
-ttT1 = [1 4];  ttT2 = [5 8];
+switch lower(p.Results.plotMode)
+    case {'task','default'}
+        isCompareTaskMode = false;
+        row1TT = [1 4]; row2TT = [5 8];
+        row1Name = 'Task 1'; row2Name = 'Task 2';
+        row1Title = 'T1'; row2Title = 'T2';
+        row1Legend = {'stim1','stim2'};
+        row2Legend = {'stim1','stim2'};
+        plotModeTitle = 'by task';
+    case {'comparetask','compare_task'}
+        isCompareTaskMode = true;
+        row1TT = [1 5]; row2TT = [4 8];
+        row1Name = 'Left action'; row2Name = 'Right action';
+        row1Title = 'L action'; row2Title = 'R action';
+        row1Legend = {'T1L','T2L'};  % curve 1 = T1 color; curve 2 = T2 color
+        row2Legend = {'T1R','T2R'};  % curve 1 = T1 color; curve 2 = T2 color
+        plotModeTitle = 'same action across tasks';
+    otherwise
+        error('Unknown plotMode: %s. Use ''task'' or ''compareTask''.',p.Results.plotMode);
+end
 
 % infer sizes & default window (from first available block)
 firstMat = [];
 for ip = 1:numel(periods)
     per = periods(ip);
-    if ~isempty(T{per}) && ~isempty(T{per}{ttT1(1)})
-        firstMat = T{per}{ttT1(1)}; break;
+    if ~isempty(T{per}) && ~isempty(T{per}{row1TT(1)})
+        firstMat = T{per}{row1TT(1)}; break;
     end
 end
 assert(~isempty(firstMat), 'No non-empty T{period}{trialType} found in requested periods.');
@@ -54,7 +77,15 @@ nTime = size(firstMat,2);
 twin  = p.Results.timeWindow; if isempty(twin), twin = 1:nTime; end
 
 % colors
-if isempty(p.Results.colors), C = lines(2); else, C = p.Results.colors; end
+if isempty(p.Results.colors)
+    if isCompareTaskMode
+        C = defaultTaskColors();
+    else
+        C = lines(2);
+    end
+else
+    C = p.Results.colors;
+end
 
 % normalize neuronIdx into indices & decide mode
 Nall = size(firstMat,1);
@@ -172,17 +203,17 @@ row2Stats = cell(1,numel(periods));   % Task 2
 for ip = 1:numel(periods)
     per = periods(ip);
 
-    % Task 1 curves
-    [m1a,se1a,~] = curve(T{per}{ttT1(1)});    % stim1-correct
-    [m1b,se1b,~] = curve(T{per}{ttT1(2)});    % stim2-correct
+    % Row 1 curves
+    [m1a,se1a,~] = curve(T{per}{row1TT(1)});
+    [m1b,se1b,~] = curve(T{per}{row1TT(2)});
     row1Stats{ip} = struct('m1',m1a,'se1',se1a,'m2',m1b,'se2',se1b);
 
-    % Task 2 curves (may be absent)
-    has5 = ~isempty(T{per}{ttT2(1)}) && size(T{per}{ttT2(1)},3) > 0;
-    has8 = ~isempty(T{per}{ttT2(2)}) && size(T{per}{ttT2(2)},3) > 0;
-    if has5 || has8
-        [m2a,se2a,~] = curve(T{per}{ttT2(1)});
-        [m2b,se2b,~] = curve(T{per}{ttT2(2)});
+    % Row 2 curves (may be absent)
+    hasA = ~isempty(T{per}{row2TT(1)}) && size(T{per}{row2TT(1)},3) > 0;
+    hasB = ~isempty(T{per}{row2TT(2)}) && size(T{per}{row2TT(2)},3) > 0;
+    if hasA || hasB
+        [m2a,se2a,~] = curve(T{per}{row2TT(1)});
+        [m2b,se2b,~] = curve(T{per}{row2TT(2)});
         row2Stats{ip} = struct('m1',m2a,'se1',se2a,'m2',m2b,'se2',se2b);
     else
         row2Stats{ip} = [];
@@ -196,7 +227,7 @@ if ~isempty(p.Results.yLim)
 else
     ylRow1 = autoYLim(row1Stats);
     ylRow2 = autoYLim(row2Stats);
-    if p.Results.sameAxis
+    if p.Results.sameAxis || isCompareTaskMode
         ylBoth = autoYLim([row1Stats row2Stats]);
         if ~isempty(ylBoth), ylRow1 = ylBoth; ylRow2 = ylBoth; end
     end
@@ -211,10 +242,10 @@ for ip = 1:numel(periods)
     per = periods(ip);
     nexttile(tl, ip); hold on;
     S = row1Stats{ip};
-    shaded(t, S.m1, S.se1, C(1,:));   % stim1-correct
-    shaded(t, S.m2, S.se2, C(2,:));   % stim2-correct
+    shaded(t, S.m1, S.se1, C(1,:));
+    shaded(t, S.m2, S.se2, C(2,:));
     xline(0,'k:'); yline(0,'k:');
-    title(sprintf('P%d  (T1)', per));
+    title(sprintf('P%d  (%s)', per,row1Title));
     if ~isempty(ylRow1), ylim(ylRow1); end
     if ip==1
         if isGroup
@@ -222,7 +253,8 @@ for ip = 1:numel(periods)
         else
             ylabel(sprintf('Task 1%s', tern(p.Results.zscore,' — z','')));
         end
-        legend({'','stim1','','stim2'},'Location','best','Box','off');
+        ylabel(rowLabelText(row1Name,isGroup,numel(neuronIdx),p.Results.zscore));
+        legend({'',row1Legend{1},'',row1Legend{2}},'Location','best','Box','off');
     end
     xlabel('Time (s)');
 end
@@ -242,7 +274,7 @@ for ip = 1:numel(periods)
     shaded(t, S.m2, S.se2, C(2,:));
 
     xline(0,'k:'); yline(0,'k:');
-    title(sprintf('P%d  (T2)', per));
+    title(sprintf('P%d  (%s)', per,row2Title));
     if ~isempty(ylRow2), ylim(ylRow2); end
     if ip==1
         if isGroup
@@ -250,7 +282,8 @@ for ip = 1:numel(periods)
         else
             ylabel(sprintf('Task 2%s', tern(p.Results.zscore,' — z','')));
         end
-        legend({'stim1','stim2'},'Location','best','Box','off');
+        ylabel(rowLabelText(row2Name,isGroup,numel(neuronIdx),p.Results.zscore));
+        legend({'',row2Legend{1},'',row2Legend{2}},'Location','best','Box','off');
     end
     xlabel('Time (s)');
 end
@@ -265,4 +298,23 @@ end
 % tiny helper for conditional suffixes
 function out = tern(cond, a, b)
 if cond, out = a; else, out = b; end
+end
+
+function label = rowLabelText(rowName,isGroup,nNeuron,zscoreFlag)
+if isGroup
+    label = sprintf('%s - Group mean (n=%d)%s',rowName,nNeuron,tern(zscoreFlag,' (z)',''));
+else
+    label = sprintf('%s%s',rowName,tern(zscoreFlag,' - z',''));
+end
+end
+
+function C = defaultTaskColors()
+if exist('multitaskColors','file')
+    try
+        C = [multitaskColors('task1'); multitaskColors('task2')];
+        return
+    catch
+    end
+end
+C = lines(2);
 end
