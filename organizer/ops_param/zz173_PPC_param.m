@@ -1,5 +1,5 @@
-myOps.mouse = 'zz170';
-myOps.area = 'AC1'; 
+myOps.mouse = 'zz173';
+myOps.area = 'PPC'; 
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 
 
@@ -12,9 +12,9 @@ myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior'];
 myOps.alignOpsPath = ['B:\' myOps.ID];
 
 myOps.frameRate = 15; 
-%myOps.trackingSessionSel = 100; 
-%myOps.chunkDays = {[1],[ 2 3],[9 10],... % T1 naive to expert
-%    [11 12],[16 18 ], [21:24],... % T2 naive to expert 
-%    [ 25]}; % interleave days
+myOps.trackingSessionSel = 100; 
+myOps.chunkDays = {[1],[ 2 3],[9 10],... % T1 naive to expert
+    [11 12],[16 18 ], [21:24],... % T2 naive to expert 
+    [ 25]}; % interleave days
 
 myOps.normSpk = true; 

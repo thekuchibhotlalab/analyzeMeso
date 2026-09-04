@@ -1,5 +1,5 @@
 %% PLOT single mouse behavior
-mouse = 'zz159';
+mouse = 'zz179';
 
 % DATAPATH can point either to the folder containing zz177_beh.mat ...
 datapath = ['G:\ziyi\mesoData\' mouse '_behavior'];

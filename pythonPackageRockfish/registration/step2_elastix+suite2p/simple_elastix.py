@@ -1,7 +1,24 @@
 import SimpleITK as sitk
 import scipy.io
-import numpy as np
 import os
+
+
+def get_affine_parameter_map():
+    parameter_map = sitk.GetDefaultParameterMap('affine')
+    parameter_map['WriteResultImage'] = ['true']
+    parameter_map['ResultImageFormat'] = ['tiff']
+    return parameter_map
+
+
+def run_elastix(fixed_image, moving_image):
+    elastix = sitk.ElastixImageFilter()
+    elastix.SetFixedImage(fixed_image)
+    elastix.SetMovingImage(moving_image)
+    elastix.SetParameterMap(get_affine_parameter_map())
+    print("Using elastix transform: affine")
+    elastix.Execute()
+    return elastix
+
 
 def register_images(fixed_image_path, moving_images_dir, registered_images_dir, transform_params_dir):
 
@@ -25,19 +42,9 @@ def register_images(fixed_image_path, moving_images_dir, registered_images_dir, 
         moving_mat = scipy.io.loadmat(moving_image_file)
         moving_image_array = moving_mat['meanImg']  # Replace with the actual variable name in the MAT file
         moving_image = sitk.GetImageFromArray(moving_image_array)
-        
-        # Set up the SimpleElastix object
-        elastix = sitk.ElastixImageFilter()
-        elastix.SetFixedImage(fixed_image)
-        elastix.SetMovingImage(moving_image)
 
-        # Load the parameter map for non-rigid registration
-        affine_parameter_map  = sitk.GetDefaultParameterMap('affine')  # Non-rigid registration
-
-        elastix.SetParameterMap(affine_parameter_map)        
-
-        # Perform the registration
-        elastix.Execute()
+        elastix = run_elastix(fixed_image, moving_image)
+        transform_parameter_map = elastix.GetTransformParameterMap()
 
         # Get the result image
         result_image = elastix.GetResultImage()
@@ -46,8 +53,7 @@ def register_images(fixed_image_path, moving_images_dir, registered_images_dir, 
         registered_image_path = os.path.join(registered_images_dir, os.path.basename(moving_image_file).replace('.mat', '.tiff'))
         sitk.WriteImage(result_image, registered_image_path)
         
-        # Get and save the transformation parameters
-        transform_parameter_map = elastix.GetTransformParameterMap()
+        # Save the transformation parameters used for the final registered image
         transform_param_file = os.path.join(transform_params_dir, os.path.basename(moving_image_file).replace('.mat', '_transform.txt'))
         sitk.WriteParameterFile(transform_parameter_map[0], transform_param_file)
 

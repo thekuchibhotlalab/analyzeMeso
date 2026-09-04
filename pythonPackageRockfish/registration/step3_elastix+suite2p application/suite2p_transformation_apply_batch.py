@@ -11,10 +11,11 @@ from suite2p.registration import rigid
 
 
 class Suite2pTransformationBatchProcessor:
-    def __init__(self, base_dir: Path, imaging_dir: Path, ops_path: Path):
+    def __init__(self, base_dir: Path, imaging_dir: Path, ops_path: Path, strict_nr_limit: bool = False):
         self.base_dir = base_dir.resolve()
         self.imaging_dir = imaging_dir.resolve()
         self.ops_path = ops_path.resolve()
+        self.strict_nr_limit = strict_nr_limit
         self.ops = self._load_ops(self.ops_path)
 
     @staticmethod
@@ -50,6 +51,30 @@ class Suite2pTransformationBatchProcessor:
         frame_data = mm.read(bytes_per_frame)
         frame = np.frombuffer(frame_data, dtype="int16")
         return frame.reshape((y_pixels, x_pixels))
+
+    def _check_nonrigid_offsets(self, cross_session_align: dict, session_dir: Path) -> None:
+        if "yoff1" not in cross_session_align or "xoff1" not in cross_session_align:
+            print("No xoff1/yoff1 fields found; nonrigid transform cannot be checked.")
+            return
+
+        yoff1 = np.asarray(cross_session_align["yoff1"], dtype=float)
+        xoff1 = np.asarray(cross_session_align["xoff1"], dtype=float)
+        max_y = float(np.nanmax(np.abs(yoff1))) if yoff1.size else np.nan
+        max_x = float(np.nanmax(np.abs(xoff1))) if xoff1.size else np.nan
+        limit = float(self.ops.get("maxregshiftNR", np.nan))
+
+        print(f"Nonrigid max abs shift: yoff1={max_y:.3f}, xoff1={max_x:.3f}, ops maxregshiftNR={limit}")
+        hard_limit = limit + 0.5
+        if np.isfinite(limit) and (max_y > hard_limit or max_x > hard_limit):
+            msg = (
+                f"WARNING: {session_dir.name} has nonrigid offsets larger than "
+                f"ops['maxregshiftNR']={limit} plus the expected subpixel margin. This usually means "
+                "crossSessionSuite2p.mat was generated from an older Suite2p run, "
+                "or Suite2p did not use the expected registration settings."
+            )
+            if self.strict_nr_limit:
+                raise ValueError(msg)
+            print(msg)
 
     @staticmethod
     def session_ops_index(folder_order_zero_based: int, total_sessions: int, use_legacy_copy_rule: bool) -> int:
@@ -100,6 +125,7 @@ class Suite2pTransformationBatchProcessor:
             f"Nonrigid coords: yoff1 shape={cross_session_align['yoff1'].shape}, "
             f"xoff1 shape={cross_session_align['xoff1'].shape}"
         )
+        self._check_nonrigid_offsets(cross_session_align, session_dir)
 
         blocks = nonrigid.make_blocks(Ly=y_pixels, Lx=x_pixels, block_size=self.ops["block_size"])
 
@@ -201,6 +227,11 @@ def main() -> None:
         action="store_true",
         help="Disable old idx*2 session-index print rule for <120 sessions.",
     )
+    parser.add_argument(
+        "--strict-nr-limit",
+        action="store_true",
+        help="Stop if crossSessionSuite2p.mat xoff1/yoff1 exceed ops['maxregshiftNR'].",
+    )
     args = parser.parse_args()
 
     base_dir = Path(args.base_dir).resolve()
@@ -220,8 +251,9 @@ def main() -> None:
     print(f"Ops path: {ops_path}")
     print(f"Task id: {task_id}")
     print(f"N tasks: {n_tasks}")
+    print(f"Strict nonrigid limit check: {args.strict_nr_limit}")
 
-    processor = Suite2pTransformationBatchProcessor(base_dir, imaging_dir, ops_path)
+    processor = Suite2pTransformationBatchProcessor(base_dir, imaging_dir, ops_path, strict_nr_limit=args.strict_nr_limit)
     processor.process_sessions(
         task_id=task_id,
         n_tasks=n_tasks,

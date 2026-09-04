@@ -4,6 +4,79 @@ import scipy.ndimage as ndimage
 import numpy as np
 import os
 
+
+def get_translation_parameter_map():
+    parameter_map = sitk.GetDefaultParameterMap('translation')
+    parameter_map["MaximumNumberOfIterations"] = ["200"]
+    parameter_map["WriteResultImage"] = ["true"]
+    parameter_map["ResultImageFormat"] = ["tiff"]
+    return parameter_map
+
+
+def get_affine_parameter_map():
+    parameter_map = sitk.GetDefaultParameterMap('affine')
+    parameter_map["MaximumNumberOfIterations"] = ["200"]
+    parameter_map["WriteResultImage"] = ["true"]
+    parameter_map["ResultImageFormat"] = ["tiff"]
+    return parameter_map
+
+
+def run_elastix(fixed_array, moving_array, parameter_map):
+    elastix = sitk.ElastixImageFilter()
+    elastix.SetFixedImage(sitk.GetImageFromArray(fixed_array.astype(np.float32)))
+    elastix.SetMovingImage(sitk.GetImageFromArray(moving_array.astype(np.float32)))
+    elastix.SetParameterMap(parameter_map)
+    elastix.Execute()
+    return elastix
+
+
+def image_corr(fixed_image_array, moving_image_array):
+    fixed = fixed_image_array.astype(np.float32)
+    moving = moving_image_array.astype(np.float32)
+    valid = np.isfinite(fixed) & np.isfinite(moving)
+    if np.sum(valid) < 10:
+        return -np.inf
+    fixed = fixed[valid]
+    moving = moving[valid]
+    if np.std(fixed) == 0 or np.std(moving) == 0:
+        return -np.inf
+    return float(np.corrcoef(fixed, moving)[0, 1])
+
+
+def select_best_matching_plane(fixed_image_array, moving_stack_array):
+    _, _, n_planes = moving_stack_array.shape
+    corr_values = np.zeros(n_planes, dtype=np.float64)
+    for i in range(n_planes):
+        corr_values[i] = image_corr(fixed_image_array, moving_stack_array[:, :, i])
+
+    best_plane_idx = int(np.nanargmax(corr_values))
+    middle_plane_idx = n_planes // 2
+    print("Ref-stack slice correlation to suite2p reference:")
+    for i, corr_value in enumerate(corr_values):
+        marker = " <== selected" if i == best_plane_idx else ""
+        middle_marker = " (middle)" if i == middle_plane_idx else ""
+        print(f"  plane {i + 1:03d}/{n_planes}: corr={corr_value:.4f}{middle_marker}{marker}")
+    return best_plane_idx, corr_values
+
+
+def apply_transform_to_plane(moving_plane, transform_parameter_map):
+    transformix = sitk.TransformixImageFilter()
+    transformix.SetMovingImage(sitk.GetImageFromArray(moving_plane.astype(np.float32)))
+    transformix.SetTransformParameterMap(transform_parameter_map)
+    transformix.Execute()
+    return sitk.GetArrayFromImage(transformix.GetResultImage())
+
+
+def transform_parameters_to_print(transform_parameter_map):
+    try:
+        transform_map = transform_parameter_map[0]
+        if "TransformParameters" in transform_map:
+            return transform_map["TransformParameters"]
+    except Exception:
+        pass
+    return ["unknown"]
+
+
 def phase_corr_patch(fixed_patch, moving_patch, max_shift=10):
     """
     Computes Phase Correlation between two patches applying Suite2p-style 
@@ -87,85 +160,74 @@ def refStack_elastix(base_path=None):
     moving_stack_array = moving_mat['refStack'].astype(np.float32)
     _, _, n_planes = moving_stack_array.shape
     
-    elastix_stack = np.zeros_like(moving_stack_array)
     final_stack = np.zeros_like(moving_stack_array)
     all_dy_maps = np.zeros_like(moving_stack_array)
     all_dx_maps = np.zeros_like(moving_stack_array)
 
-    print(f"Starting Stage 1: Global Affine alignment for {n_planes} planes...")
-    elastix = sitk.ElastixImageFilter()
-    elastix.SetFixedImage(fixed_image)
-    affine_parameter_map = sitk.GetDefaultParameterMap('affine')
-    affine_parameter_map["MaximumNumberOfIterations"] = ["200"] 
-    elastix.SetParameterMap(affine_parameter_map)
+    middle_plane_idx = n_planes // 2
+    middle_plane = moving_stack_array[:, :, middle_plane_idx]
+    translated_stack = np.zeros_like(moving_stack_array)
+    slice_translation_params = []
 
+    print(f"Starting Stage 1: translation-only alignment of {n_planes} planes to middle plane.")
+    print(f"Middle plane: {middle_plane_idx + 1}/{n_planes}")
     for i in range(n_planes):
-        moving_plane = moving_stack_array[:, :, i]
-        moving_image = sitk.GetImageFromArray(moving_plane)
-        elastix.SetMovingImage(moving_image)
+        if i == middle_plane_idx:
+            translated_stack[:, :, i] = moving_stack_array[:, :, i]
+            slice_translation_params.append(["middle_slice_identity"])
+            print(f"Plane {i + 1}/{n_planes}: middle plane, no slice translation.")
+            continue
+
         try:
-            elastix.Execute()
-            elastix_stack[:, :, i] = sitk.GetArrayFromImage(elastix.GetResultImage())
+            elastix = run_elastix(
+                middle_plane,
+                moving_stack_array[:, :, i],
+                get_translation_parameter_map(),
+            )
+            translation_map = elastix.GetTransformParameterMap()
+            translated_stack[:, :, i] = sitk.GetArrayFromImage(elastix.GetResultImage())
+            slice_translation_params.append(transform_parameters_to_print(translation_map))
+            print(
+                f"Plane {i + 1}/{n_planes}: translation parameters "
+                f"{slice_translation_params[-1]}"
+            )
         except Exception as e:
-            elastix_stack[:, :, i] = moving_plane 
+            translated_stack[:, :, i] = moving_stack_array[:, :, i]
+            slice_translation_params.append(["translation_failed"])
+            print(f"Plane {i + 1}/{n_planes}: translation failed, using raw slice. Error: {e}")
 
-    print("\nStarting Stage 2: Local Patch-Based Phase Correlation...")
-
-    patch_size = 100
-    stride = 10
-    
-    y_starts = np.arange(0, h - patch_size + 1, stride)
-    x_starts = np.arange(0, w - patch_size + 1, stride)
-    
-    for i in range(n_planes):
-        moving_slice = elastix_stack[:, :, i]
-        
-        shifts_y = np.zeros((len(y_starts), len(x_starts)))
-        shifts_x = np.zeros((len(y_starts), len(x_starts)))
-        snr_map = np.zeros((len(y_starts), len(x_starts)))
-        
-        for iy, ys in enumerate(y_starts):
-            for ix, xs in enumerate(x_starts):
-                fixed_patch = fixed_image_array[ys:ys+patch_size, xs:xs+patch_size]
-                moving_patch = moving_slice[ys:ys+patch_size, xs:xs+patch_size]
-                
-                # Use Suite2p constraints: 10px max rigid shift
-                dy, dx, snr = phase_corr_patch(fixed_patch, moving_patch, max_shift=10)
-                shifts_y[iy, ix] = dy
-                shifts_x[iy, ix] = dx
-                snr_map[iy, ix] = snr
-        
-        # 5a. Reject low SNR Blocks (Suite2p uses a threshold around 1.2)
-        snr_thresh = 1.2
-        bad_blocks = snr_map < snr_thresh
-        shifts_y[bad_blocks] = 0
-        shifts_x[bad_blocks] = 0
-        
-        # 5b. Outlier Removal: Median Filter across the block grid to catch wild border shifts
-        shifts_y = ndimage.median_filter(shifts_y, size=3)
-        shifts_x = ndimage.median_filter(shifts_x, size=3)
-        
-        # 5c. Bilinear Upsampling back to the image resolution
-        # order=1 means bilinear. mode='nearest' safely pads the extreme outer edges straight out.
-        zoom_factors = (h / shifts_y.shape[0], w / shifts_y.shape[1])
-        dy_map = ndimage.zoom(shifts_y, zoom_factors, order=1, mode='nearest')
-        dx_map = ndimage.zoom(shifts_x, zoom_factors, order=1, mode='nearest')
-        
-        # (Removed the huge Gaussian filter previously here, as bilinear interpolation 
-        # is vastly smoother out-of-the-box and doesn't drag edge coordinates out of bounds)
-        
-        y_grid, x_grid = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
-        coords = np.array([y_grid - dy_map, x_grid - dx_map])
-        
-        final_stack[:, :, i] = ndimage.map_coordinates(
-            moving_slice, coords, order=1, mode='constant', cval=0
+    print("\nStarting Stage 2: affine alignment of middle plane to Suite2p reference.")
+    try:
+        affine_elastix = run_elastix(
+            fixed_image_array,
+            translated_stack[:, :, middle_plane_idx],
+            get_affine_parameter_map(),
         )
-        
-        all_dy_maps[:, :, i] = dy_map
-        all_dx_maps[:, :, i] = dx_map
-        print(f"Plane {i+1}/{n_planes} non-rigid patched.")
+        affine_transform_map = affine_elastix.GetTransformParameterMap()
+        affine_parameters = transform_parameters_to_print(affine_transform_map)
+        print(f"Middle-to-reference affine parameters: {affine_parameters}")
 
-    scipy.io.savemat(elastix_output_path, {'refStackAligned_elastix': elastix_stack})
+        for i in range(n_planes):
+            final_stack[:, :, i] = apply_transform_to_plane(translated_stack[:, :, i], affine_transform_map)
+            print(f"Applied shared affine transform to plane {i + 1}/{n_planes}.")
+    except Exception as e:
+        final_stack = translated_stack.copy()
+        affine_transform_map = None
+        affine_parameters = ["affine_failed"]
+        print(f"Affine middle-to-reference alignment failed; saving translated stack. Error: {e}")
+
+    scipy.io.savemat(
+        elastix_output_path,
+        {
+            'refStackTranslated_to_middle': translated_stack,
+            'refStackAligned_elastix': final_stack,
+            'middle_plane_idx_python': middle_plane_idx,
+            'middle_plane_idx_matlab': middle_plane_idx + 1,
+            'slice_translation_params': np.array(slice_translation_params, dtype=object),
+            'middle_to_ref_affine_params': np.array(affine_parameters, dtype=object),
+            'elastix_transform': 'slice_translation_then_shared_affine',
+        }
+    )
     scipy.io.savemat(final_output_path, {'refStackAligned': final_stack})
     scipy.io.savemat(coord_output_path, {'x_offsets': all_dx_maps, 'y_offsets': all_dy_maps})
     print("\nAlignment Complete.")

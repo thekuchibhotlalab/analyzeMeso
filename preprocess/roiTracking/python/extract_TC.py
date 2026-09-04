@@ -1,3 +1,4 @@
+import argparse
 import os
 import numpy as np
 import mmap
@@ -156,7 +157,7 @@ class MovieTransformationProcessor:
         print(f'Saved first-session ROI mask debug file: {output_path}')
 
     def transform_movie(self, session_dir: str, animal_name: str, session_num: int,
-                        roi_coords_list: List[np.ndarray]) -> str:
+                        roi_coords_list: List[np.ndarray], overwrite: bool = False) -> str:
         """
         Transform a movie file using pre-computed transformation parameters and ROIs.
         
@@ -172,6 +173,13 @@ class MovieTransformationProcessor:
         """
         bin_file_path = os.path.join(session_dir, 'suite2p', 'plane0', 'data_suite2p.bin')
         mat_save_path = os.path.join(session_dir, 'suite2p', 'plane0', 'data_F.mat')
+
+        print(f"Session {session_num:03d}: input session folder: {session_dir}")
+        print(f"Session {session_num:03d}: reading movie: {bin_file_path}")
+        print(f"Session {session_num:03d}: saving traces: {mat_save_path}")
+        if os.path.exists(mat_save_path) and not overwrite:
+            print(f"Session {session_num:03d}: data_F.mat already exists; skipping. Use --overwrite to rerun.")
+            return mat_save_path
         
         if not os.path.exists(bin_file_path):
             raise FileNotFoundError(f"Input file not found: {bin_file_path}")
@@ -235,7 +243,7 @@ class MovieTransformationProcessor:
         
         # Save the traces to a MATLAB file.
         scipy.io.savemat(mat_save_path, {'allTraces': allTraces})
-        print(f'Transformed movie saved to {mat_save_path}')
+        print(f'Session {session_num:03d}: transformed movie saved to {mat_save_path}')
         return mat_save_path
 
     @staticmethod
@@ -269,7 +277,130 @@ class MovieTransformationProcessor:
                 traces[i] = np.nan  # output NaN when mask has no pixels
         return traces
 
-    def process_all_sessions(self):
+    def _get_session_dirs(self):
+        imaging_session_dir = os.path.join(self.base_directory, 'imagingSession')
+        print(f"Imaging session directory: {imaging_session_dir}")
+        if not os.path.exists(imaging_session_dir):
+            raise FileNotFoundError(f"Imaging session directory not found: {imaging_session_dir}")
+
+        session_dirs = [d for d in os.listdir(imaging_session_dir)
+                        if os.path.isdir(os.path.join(imaging_session_dir, d))]
+        session_dirs.sort()
+        print(f"Found {len(session_dirs)} session folder(s).")
+        return imaging_session_dir, session_dirs
+
+    def _load_roi_cell(self):
+        roi_mat_path = os.path.join(self.base_directory, 'stackROI_final_tracked.mat')
+        if not os.path.exists(roi_mat_path):
+            raise FileNotFoundError(f"ROI file not found: {roi_mat_path}")
+        print(f"Loading ROI file: {roi_mat_path}")
+        roi_mat = scipy.io.loadmat(roi_mat_path, squeeze_me=True, struct_as_record=False)
+        roi_cell = roi_mat['roiFinal']  # Expected shape: (nSession, nROI)
+        print(f"ROI cell shape: {roi_cell.shape}")
+        return roi_cell
+
+    @staticmethod
+    def _roi_row_to_list(roi_row):
+        if isinstance(roi_row, np.ndarray) and roi_row.ndim == 2:
+            return [roi_row]
+        return list(roi_row) if hasattr(roi_row, '__iter__') else [roi_row]
+
+    def process_one_session(self, session_num: int, overwrite: bool = False) -> str:
+        """
+        Process one session by 1-indexed session number.
+
+        This is the safe mode for Slurm arrays: each array task processes exactly
+        one sorted imagingSession subfolder and writes only inside that folder.
+        """
+        imaging_session_dir, session_dirs = self._get_session_dirs()
+        if session_num < 1 or session_num > len(session_dirs):
+            print(
+                f"Requested session {session_num}, but only found {len(session_dirs)} "
+                "session folder(s). Nothing to do."
+            )
+            return ''
+
+        roi_cell = self._load_roi_cell()
+        idx = session_num - 1
+        if idx >= roi_cell.shape[0]:
+            print(
+                f"Requested session {session_num}, but roiFinal only has "
+                f"{roi_cell.shape[0]} session row(s). Nothing to do."
+            )
+            return ''
+        session_dir = session_dirs[idx]
+        full_session_dir = os.path.join(imaging_session_dir, session_dir)
+        roi_row = roi_cell[idx]
+        roi_coords_list = self._roi_row_to_list(roi_row)
+
+        print("=" * 80)
+        print(f"Parallel-safe single-session mode")
+        print(f"SLURM_JOB_ID: {os.environ.get('SLURM_JOB_ID', 'not_slurm')}")
+        print(f"SLURM_ARRAY_JOB_ID: {os.environ.get('SLURM_ARRAY_JOB_ID', 'not_array')}")
+        print(f"SLURM_ARRAY_TASK_ID: {os.environ.get('SLURM_ARRAY_TASK_ID', 'not_array')}")
+        print(f"Sorted session index: {session_num}/{len(session_dirs)}")
+        print(f"Session folder name: {session_dir}")
+        print(f"Full session folder: {full_session_dir}")
+        print(f"Number of ROIs in session: {len(roi_coords_list)}")
+        print(f"Output folder: {os.path.join(full_session_dir, 'suite2p', 'plane0')}")
+
+        scipy.io.savemat(os.path.join(full_session_dir, 'suite2p', 'plane0', 'roi_cell.mat'), {'shape': roi_cell.shape})
+        output_path = self.transform_movie(full_session_dir, self.animal_name, session_num, roi_coords_list, overwrite=overwrite)
+        print(f"Successfully processed {session_dir}")
+        return output_path
+
+    def process_session_bucket(self, task_id: int, n_tasks: int, overwrite: bool = False) -> None:
+        """
+        Process a bucket of sessions for a fixed-size Slurm array.
+
+        This matches the run-suite2p.py pattern: with --array=0-9, task 0
+        processes sorted session indices 0,10,20..., task 1 processes
+        1,11,21..., etc. Outputs are still saved inside each session folder.
+        """
+        if not (0 <= task_id < n_tasks):
+            raise ValueError(f"task_id must satisfy 0 <= task_id < n_tasks, got {task_id}/{n_tasks}.")
+
+        imaging_session_dir, session_dirs = self._get_session_dirs()
+        roi_cell = self._load_roi_cell()
+        selected = [(idx, session_dir) for idx, session_dir in enumerate(session_dirs) if idx % n_tasks == task_id]
+
+        print("=" * 80)
+        print("Parallel-safe bucket mode")
+        print(f"SLURM_JOB_ID: {os.environ.get('SLURM_JOB_ID', 'not_slurm')}")
+        print(f"SLURM_ARRAY_JOB_ID: {os.environ.get('SLURM_ARRAY_JOB_ID', 'not_array')}")
+        print(f"SLURM_ARRAY_TASK_ID: {os.environ.get('SLURM_ARRAY_TASK_ID', 'not_array')}")
+        print(f"SLURM_ARRAY_TASK_COUNT: {os.environ.get('SLURM_ARRAY_TASK_COUNT', 'not_array')}")
+        print(f"Task bucket: {task_id + 1}/{n_tasks}")
+        print(f"Total sorted session folders: {len(session_dirs)}")
+        print(f"Selected {len(selected)} session(s):")
+        for idx, session_dir in selected:
+            print(f"  sorted_session_index={idx + 1:03d}, folder={session_dir}")
+
+        for idx, session_dir in selected:
+            session_num = idx + 1
+            if idx >= roi_cell.shape[0]:
+                print(
+                    f"Skipping session {session_num}: roiFinal only has "
+                    f"{roi_cell.shape[0]} session row(s)."
+                )
+                continue
+
+            full_session_dir = os.path.join(imaging_session_dir, session_dir)
+            roi_row = roi_cell[idx]
+            roi_coords_list = self._roi_row_to_list(roi_row)
+
+            print("=" * 80)
+            print(f"Bucket {task_id + 1}/{n_tasks} processing sorted session {session_num}/{len(session_dirs)}")
+            print(f"Session folder name: {session_dir}")
+            print(f"Full session folder: {full_session_dir}")
+            print(f"Number of ROIs in session: {len(roi_coords_list)}")
+            print(f"Output folder: {os.path.join(full_session_dir, 'suite2p', 'plane0')}")
+
+            scipy.io.savemat(os.path.join(full_session_dir, 'suite2p', 'plane0', 'roi_cell.mat'), {'shape': roi_cell.shape})
+            self.transform_movie(full_session_dir, self.animal_name, session_num, roi_coords_list, overwrite=overwrite)
+            print(f"Successfully processed {session_dir}")
+
+    def process_all_sessions(self, overwrite: bool = False):
         """
         Process all sessions found in the imaging session directory.
         Loads the cell array of ROI coordinates from the MATLAB file (stackROI_final_tracked.mat)
@@ -278,49 +409,69 @@ class MovieTransformationProcessor:
         Each ROI coordinate array (n * 2) is converted into a binary mask where the first column
         corresponds to x_pixels and the second to y_pixels.
         """
-        imaging_session_dir = os.path.join(self.base_directory, 'imagingSession')
-        print(f"Imaging session directory: {imaging_session_dir}")
-        if not os.path.exists(imaging_session_dir):
-            raise FileNotFoundError(f"Imaging session directory not found: {imaging_session_dir}")
-
-        # Load ROI coordinate cell array from MATLAB file.
-        roi_mat_path = os.path.join(self.base_directory, 'stackROI_final_tracked.mat')
-        if not os.path.exists(roi_mat_path):
-            raise FileNotFoundError(f"ROI file not found: {roi_mat_path}")
-        roi_mat = scipy.io.loadmat(roi_mat_path, squeeze_me=True, struct_as_record=False)
-        # Assuming the variable name in the file is 'roiFinal'
-        roi_cell = roi_mat['roiFinal']  # Expected shape: (nSession, nROI)
-        print(roi_cell.shape)
-        # Get the list of session directories and sort them.
-        session_dirs = [d for d in os.listdir(imaging_session_dir)
-                        if os.path.isdir(os.path.join(imaging_session_dir, d))]
-        session_dirs.sort()
+        imaging_session_dir, session_dirs = self._get_session_dirs()
+        roi_cell = self._load_roi_cell()
 
         # Process each session directory.
         for idx, session_dir in enumerate(session_dirs):
             full_session_dir = os.path.join(imaging_session_dir, session_dir)
-            print(f"Processing session directory: {session_dir} with idx {idx}")
+            session_num = idx + 1  # 1-indexed session number
+            print("=" * 80)
+            print(f"Sequential mode processing session {session_num}/{len(session_dirs)}")
+            print(f"Session folder name: {session_dir}")
+            print(f"Full session folder: {full_session_dir}")
 
             roi_row = roi_cell[idx]
-            print("Number of ROIs in session:", len(roi_row))
-            print(roi_row.shape)
+            roi_coords_list = self._roi_row_to_list(roi_row)
+            print("Number of ROIs in session:", len(roi_coords_list))
+            if hasattr(roi_row, 'shape'):
+                print("ROI row shape:", roi_row.shape)
+            print(f"Output folder: {os.path.join(full_session_dir, 'suite2p', 'plane0')}")
             scipy.io.savemat(os.path.join(full_session_dir, 'suite2p', 'plane0', 'roi_cell.mat'), {'shape': roi_cell.shape})
-
-            # If roi_row is a single ROI instance (ndim == 2), wrap it in a list.
-            if isinstance(roi_row, np.ndarray) and roi_row.ndim == 2:
-                roi_coords_list = [roi_row]
-            else:
-                roi_coords_list = list(roi_row) if hasattr(roi_row, '__iter__') else [roi_row]
                 
-            animal_name = self.animal_name
-            session_num = idx + 1  # 1-indexed session number
-            self.transform_movie(full_session_dir, animal_name, session_num, roi_coords_list)
+            self.transform_movie(full_session_dir, self.animal_name, session_num, roi_coords_list, overwrite=overwrite)
             print(f"Successfully processed {session_dir}")
 
 # For running the module independently.
 if __name__ == "__main__":
-    # Example usage:
-    base_dir = os.getcwd()
-    animal = 'zz153_AC'
+    parser = argparse.ArgumentParser(
+        description="Extract ROI fluorescence traces from Suite2p binary movies."
+    )
+    parser.add_argument("--base-dir", default=os.getcwd(), help="Animal/base directory. Defaults to current directory.")
+    parser.add_argument("--animal", default=None, help="Animal name. Defaults to the base directory name.")
+    parser.add_argument(
+        "--session",
+        type=int,
+        default=None,
+        help="1-indexed sorted session number to process. If omitted, Slurm array bucket mode is used when available.",
+    )
+    parser.add_argument("--task-id", type=int, default=None, help="0-based task bucket. Defaults to SLURM_ARRAY_TASK_ID.")
+    parser.add_argument("--n-tasks", type=int, default=None, help="Number of task buckets. Defaults to SLURM_ARRAY_TASK_COUNT.")
+    parser.add_argument("--overwrite", action="store_true", help="Recompute even when data_F.mat already exists.")
+    args = parser.parse_args()
+
+    base_dir = os.path.abspath(args.base_dir)
+    animal = args.animal or os.path.basename(base_dir)
     processor = MovieTransformationProcessor(base_dir, animal)
-    processor.process_all_sessions()
+
+    env_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+    env_n_tasks = os.environ.get("SLURM_ARRAY_TASK_COUNT")
+    session_num = args.session
+    task_id = args.task_id
+    n_tasks = args.n_tasks
+    if task_id is None and env_task_id is not None:
+        task_id = int(env_task_id)
+    if n_tasks is None and env_n_tasks is not None:
+        n_tasks = int(env_n_tasks)
+
+    print(f"Base directory: {base_dir}")
+    print(f"Animal name: {animal}")
+    if session_num is not None:
+        processor.process_one_session(session_num, overwrite=args.overwrite)
+    elif task_id is not None or n_tasks is not None:
+        if task_id is None or n_tasks is None:
+            raise ValueError("--task-id and --n-tasks must be provided together.")
+        processor.process_session_bucket(task_id, n_tasks, overwrite=args.overwrite)
+    else:
+        print("No session argument or SLURM_ARRAY_TASK_ID detected; processing all sessions sequentially.")
+        processor.process_all_sessions(overwrite=args.overwrite)

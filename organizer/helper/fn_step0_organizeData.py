@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -121,8 +122,7 @@ def parse_session_name_from_folder(folder_name: str) -> Tuple[int, str, str, int
         raise ValueError(f"Could not parse new-style session folder name: {folder_name}")
     session_date = int(tokens[1])
     session_name = tokens[2]
-    session_type = session_name[:-1]
-    session_number = int(session_name[-1])
+    session_type, session_number = parse_session_label(session_name, folder_name)
     return session_date, session_name, session_type, session_number
 
 
@@ -133,9 +133,31 @@ def parse_session_name_from_raw_path(raw_path: str, folder_name: str) -> Tuple[i
         raise ValueError(f"Could not parse raw file name from ops.filelist: {raw_name}")
     session_date = int(folder_name)
     session_name = tokens[2]
-    session_type = session_name[:-1]
-    session_number = int(session_name[-1])
+    session_type, session_number = parse_session_label(session_name, raw_name)
     return session_date, session_name, session_type, session_number
+
+
+def parse_session_label(session_name: str, source_name: str) -> Tuple[str, int]:
+    match = re.search(r"(\d+)(?!.*\d)", session_name)
+    if match is None:
+        print(
+            f"Warning: no numeric session number found in '{session_name}' "
+            f"from '{source_name}'. Using session_number=1."
+        )
+        return session_name, 1
+
+    session_number = int(match.group(1))
+    prefix = session_name[:match.start()].rstrip(" _-")
+    suffix = session_name[match.end():].strip()
+    if prefix.endswith("(") and suffix == ")":
+        session_type = prefix[:-1].rstrip(" _-")
+    elif suffix and not re.fullmatch(r"[\)\]\}]+", suffix):
+        session_type = f"{prefix}{suffix}"
+    else:
+        session_type = prefix
+    if not session_type:
+        session_type = session_name
+    return session_type, session_number
 
 
 def find_trace_file(s2p_path: str, preferred_file: str, preferred_var: str) -> Tuple[str, str]:

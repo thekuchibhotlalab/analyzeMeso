@@ -19,6 +19,27 @@ class MovieTransformationProcessor:
         self.base_directory = base_directory
         self.chunk_size = chunk_size
         self.animal_name = animal_name
+
+    @staticmethod
+    def _check_nonrigid_offsets(cross_session_align: dict, ops: dict, session_dir: str) -> None:
+        if "yoff1" not in cross_session_align or "xoff1" not in cross_session_align:
+            print("No xoff1/yoff1 fields found; nonrigid transform cannot be checked.")
+            return
+
+        yoff1 = np.asarray(cross_session_align["yoff1"], dtype=float)
+        xoff1 = np.asarray(cross_session_align["xoff1"], dtype=float)
+        max_y = float(np.nanmax(np.abs(yoff1))) if yoff1.size else np.nan
+        max_x = float(np.nanmax(np.abs(xoff1))) if xoff1.size else np.nan
+        limit = float(ops.get("maxregshiftNR", np.nan))
+
+        print(f"Nonrigid max abs shift: yoff1={max_y:.3f}, xoff1={max_x:.3f}, ops maxregshiftNR={limit}")
+        hard_limit = limit + 0.5
+        if np.isfinite(limit) and (max_y > hard_limit or max_x > hard_limit):
+            print(
+                f"WARNING: {os.path.basename(session_dir)} has nonrigid offsets larger than "
+                f"ops['maxregshiftNR']={limit} plus the expected subpixel margin. Regenerate crossSessionSuite2p.mat "
+                "from the new Suite2p run before applying these shifts."
+            )
         
     def _get_movie_dimensions(self, bin_file_path: str,ops:dict) -> Tuple[int, int, int]:
         """
@@ -86,6 +107,7 @@ class MovieTransformationProcessor:
         #ops = self._get_ops(bin_file_path)
         #print(ops["block_size"])
         print("x: " + str(x_pixels) + "y: " + str(y_pixels) + "frames: " + str(n_frames))
+        self._check_nonrigid_offsets(crossSessionAlign, ops, session_dir)
         blocks = nonrigid.make_blocks(Ly=y_pixels, Lx=x_pixels,block_size=ops["block_size"])
 
         with open(bin_file_path, 'rb') as f, \

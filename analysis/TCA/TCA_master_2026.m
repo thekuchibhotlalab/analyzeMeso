@@ -42,7 +42,7 @@ for i = 1:size(outDff,1)
         outDffMat(:,:,i,j) = outDff{i,j};
     end 
 end 
-save('outDffMat_zz170_AC2_spkNorm_stim.mat',"outDffMat");
+save('outDffMat_zz173_PPC_spkNorm_stim.mat',"outDffMat");
 
 %% for zz153 and 159, run clustering for simplicity
 selTime = 11:45; 
@@ -76,7 +76,7 @@ end
 %%
 [M,VEpct,TzProj] = fn_runTCA_nonneg(outDffMat + 1e-6);
 
-save('TCA-nonneg_zz151_zz153_zz159_zz170_AC_spkNorm_stim_avg_byStimulusIdentity.mat','M','TzProj','VEpct');
+save('TCA-nonneg_zz173_PPC_spkNorm_stim_avg_byStimulusIdentity.mat','M','TzProj','VEpct');
 %% PART 4 -- Examples of analysis that I have done
 % Here I have some written code to plot individual neuron activity nicely
 % see code fn_plotNeuronByPeriod.m and fn_plotNeuronOnePeriod.m
@@ -211,7 +211,7 @@ if length(nNeuron) == 5
     animalLabels = {'zz151_AC1','zz153','zz159','zz170_AC1','zz170_AC2'};
 end
 %% PART 5.3 -- plot the TCA components
-nModel = 8;
+nModel = 12;
 % Plot 1 -- Contribution and correlation of all tensor components (TCs)
 % Left: lambda (weight) of each TC. Higher weight means more contribution to neural activity.
 % Right: Correlation between all TCs. Chec if any components has unreasonably high correlation, 
@@ -249,9 +249,9 @@ figure; plot(VEpct); xlabel('nTC'); ylabel('Variance explained')
 % The first two components plotted here, component 5 and 12, are task-invariant 
 %     (L or R selective), and are gained through learning. 
 % The last component (number 8), is task-specific and lost throuhg learing
-TCs = [4 8 10 11];
-TCs = [7 2 4];
-TCs = [10 9 12 11];
+%TCs = [4 8 10 11];
+%TCs = [7 2 4];
+TCs = [8 11];
 figure; tempVar = [0 VEpct];
 RTtemp = 0.6; %RTtemp = nanmean(matchedRT(:));
 
@@ -268,7 +268,7 @@ for i = 1:length(TCs)
     topWeightThreshold = sortedWeight(nTopNeuron);
     significantNeuron = neuralWeight >= topWeightThreshold;
 
-    animalStart = [1;cumsum(nNeuron(1:end-1)) + 1];
+    animalStart = [1 cumsum(nNeuron(1:end-1)) + 1];
     animalEnd = cumsum(nNeuron);
     pctSignificant = nan(length(nNeuron),1);
     for animalIdx = 1:length(nNeuron)
@@ -1001,11 +1001,11 @@ for i = 1:5
     tempDff = squeeze(nanmean(nanmean(outDffMat(tempNeuron,11:13,:,:),2),1));
     tempDffTask(i,:,:) = tempDff;
     if i == 1 
-        tempDff = tempDff([4 3 2 1],:);
+        tempDff = tempDff(:,[4 3 2 1]);
     elseif  i == 2
-        tempDff = tempDff([3 4 2 1],:);
+        tempDff = tempDff(:,[3 4 2 1]);
     elseif  i == 3
-        tempDff = tempDff([2 1 4 3],:);
+        tempDff = tempDff(:,[2 1 4 3]);
     end 
     tempDffStim(i,:,:) = tempDff;
 end 
