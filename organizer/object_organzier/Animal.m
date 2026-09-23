@@ -63,7 +63,7 @@ classdef Animal
                     if p.Results.saveParseTrial
                         sessionInfo = obj.sessionInfo;
                         [sessionInfoBeh,trialInfo] = fn_getBehTrialInfo(sessionInfo);
-                        save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh');
+                        save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh','-v7.3');
                     end 
                 end 
                 

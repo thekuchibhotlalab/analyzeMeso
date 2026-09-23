@@ -26,11 +26,12 @@ sessionVariablesToRemove = ...
     {'tuning','dffStim','dffChoice','dffReward'};
 
 sessionVariablesForTrials = ...
-    {'date','sessionName','ishere','sessionRec','day','taskLabel','dayLabel'};
+    {'date','sessionName','sessionRec','day','taskLabel','dayLabel'};
 
 behaviorVariablesToKeep = {}; % Empty means all behSel table variables.
 
 trialTraceVariables = {'wheelStim','wheelChoice','wheelReward'};
+%trialTraceVariables = {'wheelStim','wheelChoice','wheelReward'};
 
 derivedTrialVariables = {'trialInSession'};
 % -----------------------------------------------------------------------
