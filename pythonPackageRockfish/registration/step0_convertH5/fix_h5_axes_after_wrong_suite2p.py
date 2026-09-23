@@ -19,7 +19,7 @@ import numpy as np
 # old MATLAB fn_saveh5.m output used by step3_alignRefStack.
 
 DATASET_PATH = "/data"
-FRAME_CHUNK = 2000
+FRAME_CHUNK = int(os.environ.get("H5_FRAME_CHUNK", "100"))
 
 
 def main():
@@ -79,32 +79,57 @@ def repair_h5_in_place(h5_path):
         print(f"    old MATLAB shape: {old_matlab_shape}")
         print(f"    new h5py shape:   {new_h5py_shape}")
         print(f"    new MATLAB shape: {new_matlab_shape}")
+        print(f"    old dtype:        {src_data.dtype}")
+        chunk_mb = FRAME_CHUNK * old_y * old_x * np.dtype(src_data.dtype).itemsize / 1024**2
+        print(f"    streaming frame chunk: {FRAME_CHUNK} frame(s), about {chunk_mb:.1f} MB before transpose")
 
         with h5py.File(tmp_path, "w") as dst:
             copy_file_attrs(src, dst)
             copy_root_items_except_data(src, dst)
 
-            chunk_frames = min(FRAME_CHUNK, n_frames)
+            # Match fn_saveh5.py: create an extendable int16 dataset, then
+            # append frame chunks by resizing along axis 0.
             dset = dst.create_dataset(
                 DATASET_PATH,
-                shape=new_h5py_shape,
+                shape=(0, old_x, old_y),
                 maxshape=(None, old_x, old_y),
-                chunks=(chunk_frames, old_x, old_y),
-                dtype=src_data.dtype,
+                chunks=(int(FRAME_CHUNK), old_x, old_y),
+                dtype="int16",
             )
             copy_dataset_attrs(src_data, dset)
             dset.attrs["axis_repair"] = "transposed h5py /data from T,Y,X to T,X,Y"
             dset.attrs["matlab_axis_order_after_repair"] = "Y,X,T"
 
+            total_frame = 0
             for start in range(0, n_frames, FRAME_CHUNK):
                 stop = min(start + FRAME_CHUNK, n_frames)
-                chunk = src_data[start:stop, :, :]
-                dset[start:stop, :, :] = np.transpose(chunk, (0, 2, 1))
+                chunk = np.asarray(src_data[start:stop, :, :])
+                transposed_chunk = np.transpose(chunk, (0, 2, 1)).astype(np.int16, copy=False)
+                dset.resize(dset.shape[0] + transposed_chunk.shape[0], axis=0)
+                dset[total_frame:total_frame + transposed_chunk.shape[0], :, :] = transposed_chunk
+                total_frame += transposed_chunk.shape[0]
                 print(f"    wrote frames {start + 1}-{stop}/{n_frames}")
+                del chunk, transposed_chunk
 
+    verify_tmp_file(tmp_path, new_h5py_shape)
     os.replace(tmp_path, h5_path)
     elapsed = time.time() - t0
     print(f"    replaced original H5 in {elapsed:.2f} sec")
+
+
+def verify_tmp_file(tmp_path, expected_shape):
+    with h5py.File(tmp_path, "r") as h5:
+        if DATASET_PATH not in h5:
+            raise RuntimeError(f"Verification failed: {DATASET_PATH} missing in {tmp_path}")
+        dset = h5[DATASET_PATH]
+        shape = tuple(dset.shape)
+        if shape != expected_shape:
+            raise RuntimeError(f"Verification failed for {tmp_path}: expected {expected_shape}, got {shape}")
+        if dset.dtype != np.dtype("int16"):
+            raise RuntimeError(
+                f"Verification failed for {tmp_path}: expected dtype int16, got {dset.dtype}"
+            )
+        print(f"    verification passed: /data shape is {shape}, dtype is {dset.dtype}")
 
 
 def copy_file_attrs(src, dst):

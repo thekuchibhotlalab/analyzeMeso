@@ -6,7 +6,7 @@ X = TCAmatrix;
 nanFlag = isnan(nanmean(nanmean(nanmean(X,2),3),4));
 X(nanFlag,:,:,:) = []; 
 
-R = 1:15; 
+R = 10; 
 M = {}; VEpct = []; TzProj = {};
 for i = 1:length(R)
     [M{i},k0,info,VEpct(i),TzProj{i}] = runTCA(X,R(i));

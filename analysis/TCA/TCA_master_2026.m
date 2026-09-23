@@ -2,7 +2,7 @@
 % Load the saved animal object in the onedrive. This object pools neural and behavioral data 
 %     (preprocessed data) together into one object. 
 clear;
-tic; ani = Animal('zz172_PPC1','actType','spk','tracking',true); 
+tic; ani = Animal('zz159_PPC','actType','spk','tracking',true); 
 
 
 %% PART 2.3 -- Recreate the behavioral learning curve
@@ -17,7 +17,7 @@ plot(acc); xlabel('Trial in Training'); ylabel('Accuracy')
 % To do this, we 'parse' the raw timecourse (TC) into activity of each trial
 ani = ani.parseTrial;
 %%
-ani = ani.parseDay('tracking','minSessionsPerLearningPeriod',8);
+ani = ani.parseDay('tracking','minSessionsPerLearningPeriod',4);
 
 %% a different version for zz159
 ani = ani.parseDay('trackingMode','unrestrained');
@@ -27,9 +27,11 @@ selTime = 21:55;
 [ani,~,trialTypeInfo] = ani.chunkDaysByTrialType({'dffStim','dffChoice','behSel'},'selTime',selTime,'stim',...
     [1,1,2,2,3,3,4,4],'choice',[1,2,1,2,1,2,1,2]);
 
-[outDff,~,outCounts,matchedRT] = fn_matchRT(ani.trialTypeInfo);
+[outDff,~,outCounts,matchedRT] = fn_matchRT(ani.trialTypeInfo,'dffStim');
 %%
-save('outDffMat_zz159_AC_spkNorm_stim_trial.mat','outDff');
+outDff = cellfun( @(x)(x(clustering.labelTracked==1,:,:)), outDff,'UniformOutput',false);
+
+save('B:\analysis\sfn2025Plot\outDffMat_zz153_PPC_spkNorm_choice_trial.mat','outDff');
 %save('ani_zz153_PPC_parsed.mat','ani','-v7.3');
 
 
@@ -42,7 +44,8 @@ for i = 1:size(outDff,1)
         outDffMat(:,:,i,j) = outDff{i,j};
     end 
 end 
-save('outDffMat_zz173_PPC_spkNorm_stim.mat',"outDffMat");
+
+save('B:\analysis\sfn2025Plot\outDffMat_zz153_PPC_spkNorm_choice.mat',"outDffMat");
 
 %% for zz153 and 159, run clustering for simplicity
 selTime = 11:45; 
@@ -76,7 +79,7 @@ end
 %%
 [M,VEpct,TzProj] = fn_runTCA_nonneg(outDffMat + 1e-6);
 
-save('TCA-nonneg_zz173_PPC_spkNorm_stim_avg_byStimulusIdentity.mat','M','TzProj','VEpct');
+save('B:\analysis\sfn2025Plot\TCAfit\TCA-nonneg_zz177_PPC_spkNorm_stim.mat','M','TzProj','VEpct');
 %% PART 4 -- Examples of analysis that I have done
 % Here I have some written code to plot individual neuron activity nicely
 % see code fn_plotNeuronByPeriod.m and fn_plotNeuronOnePeriod.m
@@ -211,7 +214,7 @@ if length(nNeuron) == 5
     animalLabels = {'zz151_AC1','zz153','zz159','zz170_AC1','zz170_AC2'};
 end
 %% PART 5.3 -- plot the TCA components
-nModel = 12;
+nModel = 1;
 % Plot 1 -- Contribution and correlation of all tensor components (TCs)
 % Left: lambda (weight) of each TC. Higher weight means more contribution to neural activity.
 % Right: Correlation between all TCs. Chec if any components has unreasonably high correlation, 
@@ -251,7 +254,7 @@ figure; plot(VEpct); xlabel('nTC'); ylabel('Variance explained')
 % The last component (number 8), is task-specific and lost throuhg learing
 %TCs = [4 8 10 11];
 %TCs = [7 2 4];
-TCs = [8 11];
+TCs = [2 3];
 figure; tempVar = [0 VEpct];
 RTtemp = 0.6; %RTtemp = nanmean(matchedRT(:));
 
@@ -263,22 +266,17 @@ for i = 1:length(TCs)
     if sum(nNeuron) ~= length(neuralWeight)
         error('sum(nNeuron) (%d) does not match neural factor length (%d).',sum(nNeuron),length(neuralWeight));
     end
-    nTopNeuron = max(1,ceil(0.2 * length(neuralWeight)));
-    sortedWeight = sort(neuralWeight,'descend');
-    topWeightThreshold = sortedWeight(nTopNeuron);
-    significantNeuron = neuralWeight >= topWeightThreshold;
-
     animalStart = [1 cumsum(nNeuron(1:end-1)) + 1];
     animalEnd = cumsum(nNeuron);
-    pctSignificant = nan(length(nNeuron),1);
+    animalMeanWeight = nan(length(nNeuron),1);
     for animalIdx = 1:length(nNeuron)
         tempIdx = animalStart(animalIdx):animalEnd(animalIdx);
-        pctSignificant(animalIdx) = 100 * sum(significantNeuron(tempIdx)) / nNeuron(animalIdx);
+        animalMeanWeight(animalIdx) = mean(neuralWeight(tempIdx),'omitnan');
     end
-    bar(pctSignificant,'FaceColor',[0.45 0.45 0.45],'EdgeColor','none');
-    ylim([0 max(25,ceil(max(pctSignificant)/10)*10)]);
-    ylabel('% neurons');
-    title('Top 20% Neural Weight');
+    bar(animalMeanWeight,'FaceColor',[0.45 0.45 0.45],'EdgeColor','none');
+    yline(0);
+    ylabel('Mean weight');
+    title('Average Neural Weight');
     xticks(1:length(nNeuron)); xticklabels(animalLabels); xtickangle(35);
 
     subplot(length(TCs),4,2 + 4*(i-1));

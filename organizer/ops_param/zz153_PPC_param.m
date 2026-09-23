@@ -4,12 +4,18 @@ myOps.area = 'PPC';
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 % Information about data location of the animal
 myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\']; 
-myOps.TCpath = 'C:\Users\zzhu34\Documents\tempdata\zz153_PPC';
+myOps.TCpath = ['B:\' myOps.ID];
+myOps.alignOpsPath = myOps.TCpath;
+myOps.dataAnalyzedPath = myOps.TCpath;
+
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
-myOps.alignOpsPath = 'C:\Users\zzhu34\Documents\tempdata\zz153_PPC';
+
+myOps.sessionInfoName = ['B:\analysis\animal' filesep myOps.ID '_parsedTrial.mat'];
+myOps.frameRate = 15; 
+
 % Information about recording and behavior
 %myOps.dayT1 = [20240516,20240522];
 %myOps.dayT1_expert = [20240516,20240522];
@@ -17,7 +23,7 @@ myOps.alignOpsPath = 'C:\Users\zzhu34\Documents\tempdata\zz153_PPC';
 %myOps.dayT2_expert = [20240516,20240522];
 %myOps.dayInterleave= [20240516,20240522];
 
-myOps.frameRate = 15; 
+
 % selection criteria for tracking
 myOps.trackingSessionSel = 107; 
 % chunking of days for TCA analysis of 7 different periods

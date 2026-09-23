@@ -1,5 +1,21 @@
 %% STEP 1 -- get the meanImg
-function ops = step1_createOps(datapath,refIdx, refImg)
+function ops = step1_createOps(datapath,refIdx, refImg, varargin)
+% Use 'skipInitialTransform', true to keep mean images unshifted and save
+% initial_transform_coord as zeros.
+if nargin < 2; refIdx = []; end
+if nargin < 3; refImg = []; end
+
+if isNameValueStart(refIdx)
+    varargin = [{refIdx,refImg},varargin];
+    refIdx = [];
+    refImg = [];
+elseif isNameValueStart(refImg)
+    varargin = [{refImg},varargin];
+    refImg = [];
+end
+
+skipInitialTransform = parseSkipInitialTransform(varargin{:});
+
 % first save ops file
 ops.datapath = datapath;
 mouseArea = strsplit(datapath,'\'); ops.mouseArea = mouseArea{end};
@@ -23,19 +39,23 @@ checkMeanImgEnhancedSize(output);
 
 meanImgEnhanced = cellfun(@(x)(x{1}),output,'UniformOutput',false);
 meanImgEnhanced = fn_cell2mat(meanImgEnhanced,3); 
-if exist('refImg')
+if skipInitialTransform
+    initial_transform_coord = zeros(size(meanImgEnhanced,3),2);
+    fprintf('Skipping initial fast alignment; initial_transform_coord set to zeros.\n');
+elseif ~isempty(refImg)
     [meanImgEnhanced,initial_transform_coord] = fn_fastAlign(meanImgEnhanced,'refImg',refImg);
 else
     [meanImgEnhanced,initial_transform_coord] = fn_fastAlign(meanImgEnhanced,'center');
 end 
 ops.meanImgEnhanced = round(meanImgEnhanced*5000); 
+ops.skipInitialTransform = skipInitialTransform;
 
 ops.imagingFilename = cellfun(@(x)(x{2}),output,'UniformOutput',false);
 tempCorr = reshape(meanImgEnhanced,size(meanImgEnhanced,1)*size(meanImgEnhanced,2),[]);
 tempCorr = corr(tempCorr);
 [~,tempIdx] = max(sum(tempCorr,1));
 
-if ~exist('refIdx');  refIdx = tempIdx; end 
+if isempty(refIdx);  refIdx = tempIdx; end 
 ops.refIdx = refIdx;
 ref = ops.meanImgEnhanced(:,:,refIdx);ops.ref = ref; ops.refName = ops.imagingFilename{refIdx};
 
@@ -91,6 +111,42 @@ fn_saveMP4(ops.meanImgEnhanced,[ops.elastixPath filesep 'rawElastix' filesep ops
                     ii,imgSize(ii,1),imgSize(ii,2),expectedSize(1),expectedSize(2),sessionPath{ii});
             end
             error('step1_createOps stopped because at least one meanImgEnhanced has the wrong size.');
+        end
+    end
+
+    function tf = isNameValueStart(value)
+        tf = (ischar(value) || isstring(value)) && ...
+            any(strcmpi(char(value),{'skipInitialTransform','skipInitialAlignment'}));
+    end
+
+    function skipInitialTransform = parseSkipInitialTransform(varargin)
+        skipInitialTransform = false;
+        if isempty(varargin)
+            return
+        end
+
+        if length(varargin) == 1 && (islogical(varargin{1}) || isnumeric(varargin{1}))
+            skipInitialTransform = logical(varargin{1});
+            return
+        end
+
+        if mod(length(varargin),2) ~= 0
+            error('Optional inputs should be name-value pairs, or a single logical skipInitialTransform value.');
+        end
+
+        for kk = 1:2:length(varargin)
+            name = varargin{kk};
+            value = varargin{kk+1};
+            if ~ischar(name) && ~isstring(name)
+                error('Optional input names must be character vectors or strings.');
+            end
+
+            switch lower(char(name))
+                case {'skipinitialtransform','skipinitialalignment'}
+                    skipInitialTransform = logical(value);
+                otherwise
+                    error('Unknown optional input: %s',char(name));
+            end
         end
     end
 

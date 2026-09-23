@@ -2,6 +2,10 @@ function sessionInfo = dealExceptions(sessionInfo,animalName)
 if ~ismember('excludeNeuralAnalysis',sessionInfo.Properties.VariableNames)
     sessionInfo.excludeNeuralAnalysis = false(height(sessionInfo),1);
 end
+if ~ismember('neuralPaddingFrames',sessionInfo.Properties.VariableNames)
+    sessionInfo.neuralPaddingFrames = zeros(height(sessionInfo),1);
+end
+hasTC = ismember('TC',sessionInfo.Properties.VariableNames);
 
 switch animalName
 
@@ -26,15 +30,15 @@ switch animalName
 
         % recording session 5 and 6 both correspond to behavior session 5. skip for now
         tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 5);
-        sessionInfo.TC{tempIdx} = [];
+        if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
         tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 6);
-        sessionInfo.TC{tempIdx} = [];
+        if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
         % this session only has one trial, discard it
         tempIdx = find(sessionInfo.date == 20240526 & sessionInfo.session == 5);
-        sessionInfo.TC{tempIdx} = [];
+        if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
     case 'zz159'
@@ -43,15 +47,24 @@ switch animalName
         sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
         tempIdx = find(sessionInfo.date == 20240629 & sessionInfo.session == 2);
-        sessionInfo.TC{tempIdx} = cat(1,sessionInfo.TC{tempIdx},nan(3000,size(sessionInfo.TC{tempIdx},2)));
+        sessionInfo.neuralPaddingFrames(tempIdx) = 3000;
+        if hasTC
+            for idx = tempIdx(:)'
+                sessionInfo.TC{idx} = cat(1,sessionInfo.TC{idx},nan(3000,size(sessionInfo.TC{idx},2)));
+            end
+        end
 
-        tempIdx = find(sessionInfo.date == 20240716 & sessionInfo.session == 1);
-        sessionInfo.session(tempIdx) = 2;
-        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '2']};
-
-        tempIdx = find(sessionInfo.date == 20240716 & sessionInfo.session == 2);
-        sessionInfo.session(tempIdx) = 3;
-        sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
+        % Capture both original indices before renaming (avoid mapping 1 to 3).
+        tempIdx1 = find(sessionInfo.date == 20240716 & sessionInfo.session == 1);
+        tempIdx2 = find(sessionInfo.date == 20240716 & sessionInfo.session == 2);
+        for idx = tempIdx1(:)'
+            sessionInfo.session(idx) = 2;
+            sessionInfo.sessionName{idx} = [sessionInfo.sessionType{idx} '2'];
+        end
+        for idx = tempIdx2(:)'
+            sessionInfo.session(idx) = 3;
+            sessionInfo.sessionName{idx} = [sessionInfo.sessionType{idx} '3'];
+        end
 
 
 

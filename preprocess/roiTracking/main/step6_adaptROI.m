@@ -17,6 +17,7 @@ else
 end
 load([datapath filesep 'alignedOps.mat' ],'alignedOps');
 load([datapath filesep 'stackROI_final.mat' ],'stackROI');
+lowSNRFlag = loadLowSNRFlag(datapath);
 %if ~isfile([ops.roiTrackingPath filesep 'refStack' filesep 'refStackAligned.mat'])
 %disp('refStack non-rigid alignment NOT detected -- OLD version -- loading refStack from TIFF')
 refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'refStackReconstruct' ]);
@@ -26,8 +27,8 @@ refImg_roiReference = loadRefstacksel([datapath filesep 'roiTracking' filesep 'r
 %end 
 % try this
 
-[roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roiShiftColFinal,roiDepthFinal,roiDepthIdxFinal,roiDepthDiffFinal,roiFovValidFinal,roiFovFractionFinal,initialXYShiftFinal,roiFovExcludedCount] = projectROI(stackROI, alignedOps.suite2pImg, ops.offsetMap,refImg_roiReference, ops.refStackSelLoc,initial_transform_coord,Pix,stepSize);
-save([datapath filesep 'stackROI_final_tracked.mat'],'roiFinal', 'ishereFinal','alignIdx1Mean','alignIdx2Mean','roiShiftRowFinal','roiShiftColFinal','roiDepthFinal','roiDepthIdxFinal','roiDepthDiffFinal','roiFovValidFinal','roiFovFractionFinal','initialXYShiftFinal','roiFovExcludedCount','Pix','stepSize');
+[roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roiShiftColFinal,roiDepthFinal,roiDepthIdxFinal,roiDepthDiffFinal,roiFovValidFinal,roiFovFractionFinal,initialXYShiftFinal,roiFovExcludedCount,lowSNRExcludedCount] = projectROI(stackROI, alignedOps.suite2pImg, ops.offsetMap,refImg_roiReference, ops.refStackSelLoc,initial_transform_coord,lowSNRFlag,Pix,stepSize);
+save([datapath filesep 'stackROI_final_tracked.mat'],'roiFinal', 'ishereFinal','alignIdx1Mean','alignIdx2Mean','roiShiftRowFinal','roiShiftColFinal','roiDepthFinal','roiDepthIdxFinal','roiDepthDiffFinal','roiFovValidFinal','roiFovFractionFinal','initialXYShiftFinal','roiFovExcludedCount','lowSNRExcludedCount','Pix','stepSize');
 saveTopOffsetSessionPlots(ops.roiTrackingPath,alignedOps.suite2pImg,roiFinal,ishereFinal,initialXYShiftFinal,roiFovExcludedCount);
 end 
 
@@ -118,7 +119,7 @@ end
 
 %end 
 %% functions 
-function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roiShiftColFinal,roiDepthFinal,roiDepthIdxFinal,roiDepthDiffFinal,roiFovValidFinal,roiFovFractionFinal,initialXYShiftFinal,roiFovExcludedCount] = projectROI(stackROI, suite2pImg, offsetMap,refImg_roiReference,refStackSelLoc,initial_transform_coord,Pix,stepSize)
+function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roiShiftColFinal,roiDepthFinal,roiDepthIdxFinal,roiDepthDiffFinal,roiFovValidFinal,roiFovFractionFinal,initialXYShiftFinal,roiFovExcludedCount,lowSNRExcludedCount] = projectROI(stackROI, suite2pImg, offsetMap,refImg_roiReference,refStackSelLoc,initial_transform_coord,lowSNRFlag,Pix,stepSize)
     excludeEdge = 10;
     roiShiftRadius = Pix;
     maxGlobalShift = 5;
@@ -127,6 +128,7 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
     minRoiFovFraction = 0.5;
     % Get image size
     [imgHeight, imgWidth, nImg] = size(suite2pImg);
+    lowSNRFlag = validateLowSNRFlag(lowSNRFlag,imgHeight,imgWidth,nImg);
 
     % take note of which ROI is here
     roiFinal = cell(nImg,length(stackROI.coord));
@@ -140,13 +142,14 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
     roiFovFractionFinal = nan(nImg,length(stackROI.coord));
     initialXYShiftFinal = nan(nImg,2);
     roiFovExcludedCount = nan(1,nImg);
+    lowSNRExcludedCount = nan(1,nImg);
     alignIdx1Mean = nan(1,nImg); alignIdx2Mean = nan(1,nImg);
     for i = 1:nImg
         tic;
         initialXYShift = getInitialXYShift(initial_transform_coord,i,nImg);
         initialXYShiftFinal(i,:) = initialXYShift;
 
-        [roiMatched,ishereMatched,alignIdx1Mean(i),alignIdx2Mean(i),roiShiftRow,roiShiftCol,roiDepth,roiDepthIdx,roiDepthDiff,roiFovValid,roiFovFraction] = matchImg(suite2pImg(:,:,i),offsetMap(:,:,i),refImg_roiReference,refStackSelLoc,stackROI,initialXYShift,i);
+        [roiMatched,ishereMatched,alignIdx1Mean(i),alignIdx2Mean(i),roiShiftRow,roiShiftCol,roiDepth,roiDepthIdx,roiDepthDiff,roiFovValid,roiFovFraction,lowSNRRejected] = matchImg(suite2pImg(:,:,i),offsetMap(:,:,i),refImg_roiReference,refStackSelLoc,stackROI,initialXYShift,i);
         roiFinal(i,:) = roiMatched;
         ishereFinal(i,:) = ishereMatched;
         roiShiftRowFinal(i,:) = roiShiftRow;
@@ -157,11 +160,14 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
         roiFovValidFinal(i,:) = roiFovValid;
         roiFovFractionFinal(i,:) = roiFovFraction;
         roiFovExcludedCount(i) = sum(roiFovValid == 0);
+        lowSNRExcludedCount(i) = sum(lowSNRRejected == 1);
         fprintf('Session%d: %d neurons inferred absent due to initial x-y FOV shift.\n', ...
             i, roiFovExcludedCount(i));
+        fprintf('Session%d: %d neurons inferred absent due to low-SNR flag.\n', ...
+            i, lowSNRExcludedCount(i));
         t = toc; disp(['Session' int2str(i) ', time elapsed = ' num2str(t)])
     end 
-    function [roiMatched,ishereMatched,alignIdx1Mean,alignIdx2Mean,roiShiftRow,roiShiftCol,roiDepth,roiDepthIdx,roiDepthDiff,roiFovValid,roiFovFraction] = matchImg(suite2pImg,offsetMap,refImg_roiReference,refStackSelLoc,stackROI,initialXYShift,sessionIdx)
+    function [roiMatched,ishereMatched,alignIdx1Mean,alignIdx2Mean,roiShiftRow,roiShiftCol,roiDepth,roiDepthIdx,roiDepthDiff,roiFovValid,roiFovFraction,lowSNRRejected] = matchImg(suite2pImg,offsetMap,refImg_roiReference,refStackSelLoc,stackROI,initialXYShift,sessionIdx)
 
         nRoi = size(stackROI.ishere,2); nDepth = length(refStackSelLoc);
         % Define valid ranges excluding edges
@@ -208,6 +214,7 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
         roiDepthDiff = nan(1,nRoi);
         roiFovValid = nan(1,nRoi);
         roiFovFraction = nan(1,nRoi);
+        lowSNRRejected = zeros(1,nRoi);
 
         offsetMapForDepth = fillOffsetEdges(offsetMap);
         [shiftSamples,alignIdx2Abs] = estimateShiftField();
@@ -244,6 +251,11 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
             roiFovFraction(b) = inFovFraction;
             if isValidFov == 0
                 ishereMatched(b) = 0;
+            end
+
+            if roiCentroidInLowSNR(roiMatched{b},sessionIdx)
+                ishereMatched(b) = 0;
+                lowSNRRejected(b) = 1;
             end
         end
 
@@ -432,6 +444,48 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
                 roiCenter(2) >= validColStart && roiCenter(2) <= validColEnd;
             isValidFov = centerInFov && inFovFraction >= minRoiFovFraction;
         end
+
+        function inLowSNR = roiCentroidInLowSNR(roiCoords,sessionIdx)
+            inLowSNR = false;
+            if isempty(lowSNRFlag) || sessionIdx > size(lowSNRFlag,3)
+                return
+            end
+            if isempty(roiCoords) || size(roiCoords,2) < 2 || any(isnan(roiCoords(:)))
+                return
+            end
+
+            centerRow = round(mean(roiCoords(:,1)));
+            centerCol = round(mean(roiCoords(:,2)));
+            if centerRow < 1 || centerRow > imgHeight || centerCol < 1 || centerCol > imgWidth
+                return
+            end
+
+            inLowSNR = lowSNRFlag(centerRow,centerCol,sessionIdx) > 0;
+        end
+    end
+
+    function lowSNRFlag = validateLowSNRFlag(lowSNRFlag,imgHeight,imgWidth,nImg)
+        if isempty(lowSNRFlag)
+            return
+        end
+        if ndims(lowSNRFlag) ~= 3
+            warning('lowSNRFlag should be Y x X x nSession. Ignoring lowSNRFlag because it is not 3-D.');
+            lowSNRFlag = [];
+            return
+        end
+        if size(lowSNRFlag,1) ~= imgHeight || size(lowSNRFlag,2) ~= imgWidth
+            warning(['lowSNRFlag spatial size is %d x %d, but suite2pImg is %d x %d. ' ...
+                'Ignoring lowSNRFlag.'], ...
+                size(lowSNRFlag,1),size(lowSNRFlag,2),imgHeight,imgWidth);
+            lowSNRFlag = [];
+            return
+        end
+        if size(lowSNRFlag,3) < nImg
+            warning(['lowSNRFlag has %d sessions, but suite2pImg has %d sessions. ' ...
+                'Low-SNR rejection will only apply to the available sessions.'], ...
+                size(lowSNRFlag,3),nImg);
+        end
+        lowSNRFlag = logical(lowSNRFlag);
     end
 
     function initialXYShift = getInitialXYShift(initial_transform_coord,sessionIdx,nSession)
@@ -456,6 +510,40 @@ function [roiFinal, ishereFinal,alignIdx1Mean,alignIdx2Mean,roiShiftRowFinal,roi
         initialXYShift = initialXYShift(:)';
     end
 end 
+
+function lowSNRFlag = loadLowSNRFlag(datapath)
+    lowSNRFlag = [];
+    candidateFiles = { ...
+        [datapath filesep 'lowSNRFlag.mat'], ...
+        [datapath filesep 'lowSNRflag.mat'], ...
+        [datapath filesep 'roiTracking' filesep 'lowSNRFlag.mat'], ...
+        [datapath filesep 'roiTracking' filesep 'lowSNRflag.mat']};
+
+    lowSNRFile = '';
+    for i = 1:numel(candidateFiles)
+        if isfile(candidateFiles{i})
+            lowSNRFile = candidateFiles{i};
+            break
+        end
+    end
+
+    if isempty(lowSNRFile)
+        fprintf('No lowSNRFlag.mat detected. Skipping low-SNR ROI rejection.\n');
+        return
+    end
+
+    loadedLowSNR = load(lowSNRFile);
+    if isfield(loadedLowSNR,'lowSNRFlag')
+        lowSNRFlag = loadedLowSNR.lowSNRFlag;
+    elseif isfield(loadedLowSNR,'lowSNRflag')
+        lowSNRFlag = loadedLowSNR.lowSNRflag;
+    else
+        warning('Found %s, but it does not contain lowSNRFlag or lowSNRflag. Skipping low-SNR ROI rejection.',lowSNRFile);
+        return
+    end
+
+    fprintf('Loaded low-SNR mask: %s\n',lowSNRFile);
+end
 
 
  function img = loadRefstacksel(folder_path)

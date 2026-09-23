@@ -23,7 +23,6 @@ classdef Animal
             parse(p, varargin{:});
             obj.ID = id;
             % Attempt to load options file: [ID '_param.m']
-            myOps = struct();
             run([obj.ID '_param.m']);
             obj.ops = myOps;
             actType = p.Results.actType; 
@@ -31,17 +30,14 @@ classdef Animal
             disp(['Step1 -- Loading recording parameter file: ' obj.ID '_param.m'])
             disp('Step2 -- Loading behavior and neural TC files')
 
-            % STEP1 -- CONSTRUCT SESSION INFO
-            if exist(obj.ops.sessionInfoName )
+            % STEP! -- CONSTRUCT SESSION INFO
+            if ~isempty(p.Results.sessionInfoDir)
                 if (p.Results.loadNeural)
-                    load(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh');
-                    obj.sessionInfo = sessionInfo;
+                    load(obj.ops.sessionInfoName,'sessionInfo');
                 else
-                    load(obj.ops.sessionInfoName,'trialInfo','sessionInfoBeh');
+
                 end 
-                load([obj.ops.alignOpsPath filesep obj.ops.ID '_alignmentOps.mat'],'alignmentOps');
-                obj.trialInfo = trialInfo;
-                obj.sessionInfoBeh = sessionInfoBeh;
+                obj.sessionInfo = sessionInfo;
                 obj.alignmentOps = alignmentOps;
                 disp('Saved data detected -- directly loading sessionInfo')
             else
@@ -53,7 +49,6 @@ classdef Animal
                     ismember('behSel',obj.sessionInfo.Properties.VariableNames)
                 obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
             end
-
             % STEP2 -- LOAD NEURAL DATA AND PARSE TRIAL IF NEEDED
             if p.Results.loadNeural
                 if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
@@ -62,7 +57,7 @@ classdef Animal
                     obj = obj.parseTrial();
                     if p.Results.saveParseTrial
                         sessionInfo = obj.sessionInfo;
-                        [sessionInfoBeh,trialInfo] = fn_getBehTrialInfo(sessionInfo);
+                        [sessionInfoBeh,trialInfo] = getBehTrialInfo(sessionInfo);
                         save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh');
                     end 
                 end 
