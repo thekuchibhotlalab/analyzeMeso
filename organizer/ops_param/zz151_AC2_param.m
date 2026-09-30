@@ -12,6 +12,8 @@ myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.behavPath = 'G:\ziyi\mesoData\zz151_behavior';
 myOps.alignOpsPath = 'B:\zz151_AC2';
+myOps.sessionInfoName = ['B:\analysis\animal' filesep myOps.ID '_parsedTrial.mat'];
+
 
 myOps.frameRate = 15; 
 myOps.trackingSessionSel = 169; 

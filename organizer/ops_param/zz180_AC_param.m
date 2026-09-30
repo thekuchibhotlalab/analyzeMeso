@@ -1,5 +1,5 @@
 myOps.mouse = 'zz180';
-myOps.area = 'PPC'; 
+myOps.area = 'AC'; 
 myOps.ID = [myOps.mouse '_' myOps.area]; 
 
 
@@ -10,6 +10,8 @@ myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
 myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior'];
 myOps.alignOpsPath = ['B:\' myOps.ID];
+myOps.sessionInfoName = ['B:\analysis\animal' filesep myOps.ID '_parsedTrial.mat'];
+
 
 myOps.frameRate = 15; 
 myOps.trackingSessionSel = 100; 

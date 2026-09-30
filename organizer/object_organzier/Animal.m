@@ -33,55 +33,63 @@ classdef Animal
 
             % STEP1 -- CONSTRUCT SESSION INFO
             if exist(obj.ops.sessionInfoName )
+                disp('Saved data detected -- directly loading sessionInfo')
                 if (p.Results.loadNeural)
                     load(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh');
                     obj.sessionInfo = sessionInfo;
                 else
                     load(obj.ops.sessionInfoName,'trialInfo','sessionInfoBeh');
                 end 
-                load([obj.ops.alignOpsPath filesep obj.ops.ID '_alignmentOps.mat'],'alignmentOps');
+                load([obj.ops.alignOpsPath filesep  'alignedOps.mat'],'alignedOps');
                 obj.trialInfo = trialInfo;
                 obj.sessionInfoBeh = sessionInfoBeh;
-                obj.alignmentOps = alignmentOps;
-                disp('Saved data detected -- directly loading sessionInfo')
+                obj.alignmentOps = alignedOps;
+                
             else
                 disp('Saved data not detected -- creating sessionInfo')
-                constructSessionInfo();                
-            end
-
-            if ~iscell(obj.sessionInfo) && istable(obj.sessionInfo) && ...
+                constructSessionInfo();       
+                if ~iscell(obj.sessionInfo) && istable(obj.sessionInfo) && ...
                     ismember('behSel',obj.sessionInfo.Properties.VariableNames)
-                obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
-            end
-
-            % STEP2 -- LOAD NEURAL DATA AND PARSE TRIAL IF NEEDED
-            if p.Results.loadNeural
-                if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
-                        && ismember('TC', obj.sessionInfo.Properties.VariableNames) && ...
-                        p.Results.parseTrial
-                    obj = obj.parseTrial();
-                    if p.Results.saveParseTrial
-                        sessionInfo = obj.sessionInfo;
-                        [sessionInfoBeh,trialInfo] = fn_getBehTrialInfo(sessionInfo);
-                        save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh','-v7.3');
-                    end 
+                    obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
+                end
+                if isfield(obj.ops,'dayLabelName')
+                    disp('Saved day label detected -- loading day label')
+                    load([obj.ops.dayLabelName],'dayLabel');
+                    obj.sessionInfo.dayLabel = dayLabel; 
                 end 
-                
-                % SINGLE AREA -- DO TRACKING NORMALLY
-                if ~iscell(obj.ops.ID)
-                    if p.Results.parseDay && isempty(obj.dayInfo)
-                        if p.Results.tracking
-                            obj = obj.parseDay('tracking'); 
-                        else
-                            obj = obj.parseDay(); 
+                % STEP2 -- LOAD NEURAL DATA AND PARSE TRIAL IF NEEDED
+                if p.Results.loadNeural
+                    if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
+                            && ismember('TC', obj.sessionInfo.Properties.VariableNames) && ...
+                            p.Results.parseTrial
+                        obj = obj.parseTrial();
+                        if p.Results.saveParseTrial
+                            sessionInfo = obj.sessionInfo;
+                            [sessionInfoBeh,trialInfo] = fn_getBehTrialInfo(sessionInfo);
+                            obj.sessionInfoBeh = sessionInfoBeh; 
+                            obj.trialInfo = trialInfo;
+                            save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh','-v7.3');
                         end 
                     end 
-                % MULTI AREA -- USE SPECIAL TRACKING METHODS
-                else
-
-
+                    
+                    % SINGLE AREA -- DO TRACKING NORMALLY
+                    if ~iscell(obj.ops.ID)
+                        if p.Results.parseDay && isempty(obj.dayInfo)
+                            if p.Results.tracking
+                                obj = obj.parseDay('tracking'); 
+                            else
+                                obj = obj.parseDay(); 
+                            end 
+                        end 
+                    % MULTI AREA -- USE SPECIAL TRACKING METHODS
+                    else
+    
+    
+                    end
                 end
             end
+            
+            
 
             function constructSessionInfo
                 if ~p.Results.loadNeural
@@ -129,7 +137,10 @@ classdef Animal
             disp(['Loading ' matDir ' for behavioral matlab files'])
             filename = {filelist.name};
 
-            obj.sessionInfo.sessionRec(:) = 1:size(obj.sessionInfo,1);
+            % Preserve original _spk.mat indices across exclusions and sorting.
+            if ~ismember('sessionRec',obj.sessionInfo.Properties.VariableNames)
+                obj.sessionInfo.sessionRec = (1:height(obj.sessionInfo))';
+            end
             % Process the raw behavioral data into a table. Record both raw data and processed table
             obj.sessionInfo.behSel = cell(height(obj.sessionInfo), 1);
             
@@ -171,6 +182,7 @@ classdef Animal
                     obj.sessionInfo.date(tempIndex) = day;
                     obj.sessionInfo.session(tempIndex) = str2double(tempNumber);
                     obj.sessionInfo.sessionType(tempIndex) = {tempType};
+                    obj.sessionInfo.sessionRec(tempIndex) = 0; % No recording.
                 else
                     disp(['Critical error of session ' int2str(i) ', multiple match found'])
                 end
@@ -1370,12 +1382,12 @@ function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingNa
     load(infoName,'sessionInfo','animalID'); 
 
     sessionInfo = normalizeSessionInfo(sessionInfo);
+    sessionInfo.sessionRec = (1:height(sessionInfo))'; % Original TC cell indices.
 
     if isempty(actCell)
         sessionInfo.TC(:) = nan; 
     else
         sessionInfo.TC = actCell';
-        sessionInfo = dealExceptions(sessionInfo,obj.ops.mouse);
     end
 
     load(trackingName,'ishereFinal','roiFinal');
@@ -1400,6 +1412,10 @@ function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingNa
     end             
     cellFlag = cellfun(@(x)(nanmean(x,2)) > 0.4,sessionInfo.ishere,'UniformOutput',true);
     sessionInfo.goodTracking = cellFlag;
+    % Attach tracking to original recording rows before exceptions remove rows.
+    if ~isempty(actCell)
+        sessionInfo = dealExceptions(sessionInfo,obj.ops.mouse,obj.ID);
+    end
     % sessionInfo.TC(~cellFlag) = {[]};
 end 
 

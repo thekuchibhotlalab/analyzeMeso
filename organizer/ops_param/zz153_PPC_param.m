@@ -2,9 +2,10 @@
 myOps.mouse = 'zz153';
 myOps.area = 'PPC'; 
 myOps.ID = [myOps.mouse '_' myOps.area]; 
+
 % Information about data location of the animal
-myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\']; 
 myOps.TCpath = ['B:\' myOps.ID];
+myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior\']; 
 myOps.alignOpsPath = myOps.TCpath;
 myOps.dataAnalyzedPath = myOps.TCpath;
 

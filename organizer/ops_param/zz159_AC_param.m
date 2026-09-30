@@ -10,6 +10,8 @@ myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
 myOps.alignOpsPath = ['B:\' myOps.ID];
+myOps.sessionInfoName = ['B:\analysis\animal' filesep myOps.ID '_parsedTrial.mat'];
+
 
 myOps.dayT1 = [20240516,20240522];
 myOps.dayT1_expert = [20240516,20240522];

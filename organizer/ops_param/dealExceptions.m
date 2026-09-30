@@ -1,4 +1,9 @@
-function sessionInfo = dealExceptions(sessionInfo,animalName)
+function sessionInfo = dealExceptions(sessionInfo,animalName,animalID)
+if nargin < 3; animalID = ''; end
+% Keep source recording indices when an exception removes table rows.
+if ~ismember('sessionRec',sessionInfo.Properties.VariableNames)
+    sessionInfo.sessionRec = (1:height(sessionInfo))';
+end
 if ~ismember('excludeNeuralAnalysis',sessionInfo.Properties.VariableNames)
     sessionInfo.excludeNeuralAnalysis = false(height(sessionInfo),1);
 end
@@ -24,29 +29,36 @@ switch animalName
         sessionInfo.session(tempIdx2) = 1;
         sessionInfo.sessionName(tempIdx2) = {[sessionInfo.sessionType{tempIdx2} '1']};
     case 'zz153'
-        tempIdx = find(sessionInfo.date == 20240524 & sessionInfo.session == 2);
+        tempIdx = find(sessionInfo.date == 20240524 & sessionInfo.session == 2 & strcmp(sessionInfo.sessionType,'2AFC'));
         sessionInfo.session(tempIdx) = 3;
         sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
         % recording session 5 and 6 both correspond to behavior session 5. skip for now
-        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 5);
+        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 5 & strcmp(sessionInfo.sessionType,'2AFC'));
         if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
-        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 6);
+        tempIdx = find(sessionInfo.date == 20240613 & sessionInfo.session == 6 & strcmp(sessionInfo.sessionType,'2AFC'));
         if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
         % this session only has one trial, discard it
-        tempIdx = find(sessionInfo.date == 20240526 & sessionInfo.session == 5);
+        tempIdx = find(sessionInfo.date == 20240526 & sessionInfo.session == 5 & strcmp(sessionInfo.sessionType,'2AFC'));
         if hasTC; sessionInfo.TC(tempIdx) = {[]}; end
         sessionInfo.excludeNeuralAnalysis(tempIdx) = true;
 
     case 'zz159'
-        tempIdx = find(sessionInfo.date == 20240624 & sessionInfo.session == 1);
-        sessionInfo.session(tempIdx) = 3;
+        % Exclude this AC baseline, including TC and all row-aligned fields.
+        if strcmp(animalID,'zz159_AC')
+            tempIdx = find(sessionInfo.date == 20240612 & ...
+                sessionInfo.session == 1 & strcmp(sessionInfo.sessionType,'baseline'));
+            sessionInfo(tempIdx,:) = [];
+        end
+
+        tempIdx = find(sessionInfo.date == 20240624 & sessionInfo.session == 1 & strcmp(sessionInfo.sessionType,'2AFC'));
+        sessionInfo.session(tempIdx) = 3; 
         sessionInfo.sessionName(tempIdx) = {[sessionInfo.sessionType{tempIdx} '3']};
 
-        tempIdx = find(sessionInfo.date == 20240629 & sessionInfo.session == 2);
+        tempIdx = find(sessionInfo.date == 20240629 & sessionInfo.session == 2 & strcmp(sessionInfo.sessionType,'2AFC'));
         sessionInfo.neuralPaddingFrames(tempIdx) = 3000;
         if hasTC
             for idx = tempIdx(:)'
@@ -55,8 +67,8 @@ switch animalName
         end
 
         % Capture both original indices before renaming (avoid mapping 1 to 3).
-        tempIdx1 = find(sessionInfo.date == 20240716 & sessionInfo.session == 1);
-        tempIdx2 = find(sessionInfo.date == 20240716 & sessionInfo.session == 2);
+        tempIdx1 = find(sessionInfo.date == 20240716 & sessionInfo.session == 1 & strcmp(sessionInfo.sessionType,'2AFC'));
+        tempIdx2 = find(sessionInfo.date == 20240716 & sessionInfo.session == 2 & strcmp(sessionInfo.sessionType,'2AFC'));
         for idx = tempIdx1(:)'
             sessionInfo.session(idx) = 2;
             sessionInfo.sessionName{idx} = [sessionInfo.sessionType{idx} '2'];
