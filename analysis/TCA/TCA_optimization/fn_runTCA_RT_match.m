@@ -23,7 +23,7 @@ save('outDffMat_PPC_zz159_spkNorm_choice.mat',"outDffMat");
 
 save('TCA-nonneg_zz153_zz159_PPC_spkNorm_choice.mat');
 %% plot the TCA components
-nModel = 15;
+nModel = 1;
 
 % percentageExp = []; 
 % for i = 1:nModel
@@ -39,15 +39,15 @@ figure; subplot(1,2,1);plot(M{nModel}.lambda); xlabel('nTC'); ylabel('lambda');
 subplot(1,2,2); imagesc(corr(M{nModel}.U{1})); colorbar;
 title('Correlation matrix of the stimulus weights')
 
-subtitles = {'neural','time','learning phase','trial type'};
+subtitles = {'neural','time','learning phase','trial type', 'Task'};
 figure;
-for i = 1:4
-    subplot(1,4,i);
+for i = 1:5
+    subplot(1,5,i);
     temp = M{nModel}.U{i}'; 
     imagesc(temp); colorbar; clim([prctile(temp(:),5) prctile(temp(:),95)])
     xlabel(subtitles{i})
     ylabel('nTC')
-    if i==2; xline(10); end 
+    if i==2; xline(30); end 
 end 
 
 %%

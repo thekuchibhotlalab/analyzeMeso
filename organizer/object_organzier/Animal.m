@@ -1,152 +1,190 @@
 classdef Animal
+    % Metadata stays in the object; neural sessionInfo lives on disk.
     properties
         ID
         ops
-        trialInfo
-        sessionInfo
-        sessionInfoBeh
+        trialInfo = table()
+        sessionInfoBeh = table()
+        alignmentOps
+    end
+    properties (Transient)
         dayInfo
         chunkedDayInfo
-        alignmentOps
         analysis
     end
 
     methods
         function obj = Animal(id,varargin)
-            p = inputParser;
-            addParameter(p, 'loadNeural', true);
-            addParameter(p, 'actType', 'spk');
-            addParameter(p, 'parseTrial', true);
-            addParameter(p, 'saveParseTrial', true);
-            addParameter(p, 'parseDay', false);
-            addParameter(p, 'tracking', false);
-            parse(p, varargin{:});
-            obj.ID = id;
-            % Attempt to load options file: [ID '_param.m']
-            myOps = struct();
+            if nargin==0, return; end % MATLAB object deserialization.
+            p=inputParser;
+            addParameter(p,'loadNeural',true);
+            addParameter(p,'actType','spk');
+            addParameter(p,'parseTrial',true);
+            addParameter(p,'parseDay',false);
+            addParameter(p,'tracking',false);
+            parse(p,varargin{:});
+            obj.ID=char(id);
+            myOps=struct();
             run([obj.ID '_param.m']);
-            obj.ops = myOps;
-            actType = p.Results.actType; 
-
-            disp(['Step1 -- Loading recording parameter file: ' obj.ID '_param.m'])
-            disp('Step2 -- Loading behavior and neural TC files')
-
-            % STEP1 -- CONSTRUCT SESSION INFO
-            if exist(obj.ops.sessionInfoName )
-                disp('Saved data detected -- directly loading sessionInfo')
-                if (p.Results.loadNeural)
-                    load(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh');
-                    obj.sessionInfo = sessionInfo;
-                else
-                    load(obj.ops.sessionInfoName,'trialInfo','sessionInfoBeh');
-                end 
-                load([obj.ops.alignOpsPath filesep  'alignedOps.mat'],'alignedOps');
-                obj.trialInfo = trialInfo;
-                obj.sessionInfoBeh = sessionInfoBeh;
-                obj.alignmentOps = alignedOps;
-                
-            else
-                disp('Saved data not detected -- creating sessionInfo')
-                constructSessionInfo();       
-                if ~iscell(obj.sessionInfo) && istable(obj.sessionInfo) && ...
-                    ismember('behSel',obj.sessionInfo.Properties.VariableNames)
-                    obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
-                end
-                if isfield(obj.ops,'dayLabelName')
-                    disp('Saved day label detected -- loading day label')
-                    load([obj.ops.dayLabelName],'dayLabel');
-                    obj.sessionInfo.dayLabel = dayLabel; 
-                end 
-                % STEP2 -- LOAD NEURAL DATA AND PARSE TRIAL IF NEEDED
-                if p.Results.loadNeural
-                    if ~ismember('diffStim', obj.sessionInfo.Properties.VariableNames) ...
-                            && ismember('TC', obj.sessionInfo.Properties.VariableNames) && ...
-                            p.Results.parseTrial
-                        obj = obj.parseTrial();
-                        if p.Results.saveParseTrial
-                            sessionInfo = obj.sessionInfo;
-                            [sessionInfoBeh,trialInfo] = fn_getBehTrialInfo(sessionInfo);
-                            obj.sessionInfoBeh = sessionInfoBeh; 
-                            obj.trialInfo = trialInfo;
-                            save(obj.ops.sessionInfoName,'sessionInfo','trialInfo','sessionInfoBeh','-v7.3');
-                        end 
-                    end 
-                    
-                    % SINGLE AREA -- DO TRACKING NORMALLY
-                    if ~iscell(obj.ops.ID)
-                        if p.Results.parseDay && isempty(obj.dayInfo)
-                            if p.Results.tracking
-                                obj = obj.parseDay('tracking'); 
-                            else
-                                obj = obj.parseDay(); 
-                            end 
-                        end 
-                    % MULTI AREA -- USE SPECIAL TRACKING METHODS
-                    else
-    
-    
-                    end
-                end
+            % Also accept a dayLabel variable defined directly by the script.
+            if exist('dayLabel','var') && ~isempty(dayLabel) && ...
+                    (~isfield(myOps,'dayLabel')||isempty(myOps.dayLabel))
+                myOps.dayLabel=dayLabel;
             end
-            
-            
+            obj.ops=fn_animalStorageOptions(myOps,obj.ID);
+            assert(~iscell(obj.ops.ID),'Animal:MultipleAreas', ...
+                'Create one Animal per area so recording and neuron identities remain distinct.');
+            fn_animalCurationPath();
 
-            function constructSessionInfo
-                if ~p.Results.loadNeural
-                    actCell = {};
+            % Priority: saved Animal, complete parsed-file set, then raw data.
+            % Cached paths never load sessionInfo's neural arrays.
+            saveMetadata=false;
+            saveObject=true;
+            if isfile(obj.ops.animalObjectFile)
+                cached=load(obj.ops.animalObjectFile,'ani');
+                assert(isfield(cached,'ani')&&isa(cached.ani,'Animal')&& ...
+                    strcmp(cached.ani.ID,obj.ID),'Animal:Cache','Animal cache has a different ID.');
+                obj.sessionInfoBeh=cached.ani.sessionInfoBeh;
+                obj.trialInfo=cached.ani.trialInfo;
+                obj.alignmentOps=fn_compactAnimalAlignment(cached.ani.alignmentOps);
+                assert(istable(obj.sessionInfoBeh)&&istable(obj.trialInfo), ...
+                    'Animal:Cache','Saved Animal must contain sessionInfoBeh and trialInfo tables.');
+                % Keep paths/options from the current _param.m in the returned object.
+                saveObject=false;
+            elseif isfile(obj.ops.sessionInfoName) && ...
+                    isfile(obj.ops.sessionInfoBehFile) && isfile(obj.ops.trialInfoFile)
+                b=load(obj.ops.sessionInfoBehFile,'sessionInfoBeh');
+                t=load(obj.ops.trialInfoFile,'trialInfo');
+                assert(isfield(b,'sessionInfoBeh')&&istable(b.sessionInfoBeh)&& ...
+                    isfield(t,'trialInfo')&&istable(t.trialInfo),'Animal:Metadata', ...
+                    'Metadata files must contain the sessionInfoBeh and trialInfo tables.');
+                obj.sessionInfoBeh=b.sessionInfoBeh;
+                obj.trialInfo=t.trialInfo;
+            else
+                % Missing any member of the three-file set requires rebuilding.
+                saveMetadata=true;
+                if p.Results.loadNeural
+                    if strcmp(p.Results.actType,'spk')
+                        actCell=loadTC(obj.ops.spkname,'spk');
+                        if obj.ops.normSpk, actCell=spkNorm(actCell); end
+                    elseif strcmp(p.Results.actType,'dff')
+                        actCell=loadTC(obj.ops.TCname,'dff');
+                    else
+                        error('Animal:ActivityType','actType must be spk or dff.');
+                    end
                 else
-                % LOAD TC
-                switch actType
-                    case 'dff'
-                        actCell = loadTC(obj.ops.TCname,'dff');
-                    case 'spk'
-                        actCell = loadTC(obj.ops.spkname,'spk');
-                end 
+                    actCell={};
                 end
-
-                 % SPK NORMALIZATION
-                 disp('Doing spike normalization using norm') ;tic;
-                 if obj.ops.normSpk && p.Results.loadNeural && strcmp(actType,'spk')
-                     if iscell(obj.ops.ID)
-                         for i = 1:length(actCell)
-                             actCell{i} = spkNorm(actCell{i});
-                         end
-                     else
-                         actCell = spkNorm(actCell);
-                     end 
-                 end 
-                 toc; disp('Spk normalization done!')
-                 
-                 % LOAD SESSION INFORMATION
-                 if iscell(obj.ops.ID)
-                     for i = 1:length(obj.ops.ID)
-                        [obj.sessionInfo{i}, obj.alignmentOps{i}] = getSessionInfo(obj.ops.infoName{i},actCell{i},...
-                            obj.ops.trackingName{i},obj.ops.alignOpsPath{i},obj);
-                     end 
-                 else
-                    [obj.sessionInfo, obj.alignmentOps] = getSessionInfo(obj.ops.infoName,actCell,...
-                        obj.ops.trackingName,obj.ops.alignOpsPath,obj);
-                 end 
-                 obj = obj.getBehav;
-            end 
+                [sessionInfo,alignment]=getSessionInfo(obj.ops.infoName,actCell, ...
+                    obj.ops.trackingName,obj.ops.alignOpsPath,obj);
+                obj.alignmentOps=fn_compactAnimalAlignment(alignment);
+                clear alignment actCell
+                [obj,sessionInfo]=obj.getBehav(sessionInfo);
+                if p.Results.loadNeural && p.Results.parseTrial
+                    [obj,sessionInfo]=obj.parseTrial(sessionInfo);
+                end
+                obj=obj.fn_updateTrialMetadata(sessionInfo);
+                if p.Results.loadNeural
+                    fn_saveAnimalVariable(obj.ops.sessionInfoName,'sessionInfo',sessionInfo);
+                end
+                clear sessionInfo
+            end
+            % Also strip neural fields from old metadata tables, if present.
+            obj.sessionInfoBeh=fn_stripAnimalNeuralFields(obj.sessionInfoBeh);
+            if saveMetadata, obj.fn_saveMetadata(); end
+            if p.Results.parseDay && p.Results.loadNeural
+                if p.Results.tracking, obj=obj.parseDay('tracking');
+                else, obj=obj.parseDay(); end
+            end
+            if saveObject, obj.fn_saveObject(); end
         end
 
-        function obj = getBehav(obj)
+        function saved=saveobj(obj)
+            % Save only canonical metadata, independent of derived properties.
+            saved=struct('ID',obj.ID,'ops',obj.ops,'trialInfo',obj.trialInfo, ...
+                'sessionInfoBeh',fn_stripAnimalNeuralFields(obj.sessionInfoBeh), ...
+                'alignmentOps',fn_compactAnimalAlignment(obj.alignmentOps));
+        end
+
+        function curated=fn_prepareTrialData(obj,cfg,varargin)
+            % Query the object's metadata; loadNeural defaults to false.
+            % 'MakePlot',true displays RT and tracking plots (default false).
+            fn_animalCurationPath();
+            if nargin<2 || isempty(cfg), cfg=fn_defaultTrialSelectionConfig(); end
+            cfg.sessionInfoFile=obj.ops.sessionInfoName;
+            cfg.animalID=string(obj.ID);
+            curated=fn_prepareTrialData(obj.trialInfo,obj.sessionInfoBeh,cfg,varargin{:});
+        end
+
+        function curated=fn_prepareNeuralData(obj,curated,varargin)
+            % Activity is returned to the caller and never retained in Animal.
+            % Optional: 'ShowPlots',false, 'PlotSavePath','' (PNG folder).
+            % 'DataPath': local MAT file or folder overriding ops.sessionInfoName.
+            fn_animalCurationPath();
+            if isfield(curated,'animalID')
+                assert(string(curated.animalID)==string(obj.ID),'Animal:SelectionID', ...
+                    'These selected trials belong to a different animal/area.');
+            else
+                curated.animalID=string(obj.ID);
+            end
+            source=[];
+            if isfield(obj.ops,'sessionInfoName'), source=obj.ops.sessionInfoName; end
+            curated=fn_prepareNeuralData(curated,source,varargin{:});
+        end
+
+        function sessionInfo=fn_loadSessionInfo(obj)
+            assert(isfile(obj.ops.sessionInfoName),'Animal:MissingSessionInfo', ...
+                'Neural file is unavailable: %s.',obj.ops.sessionInfoName);
+            d=load(obj.ops.sessionInfoName,'sessionInfo');
+            assert(isfield(d,'sessionInfo')&&istable(d.sessionInfo),'Animal:SessionInfo', ...
+                'The neural file must contain a sessionInfo table.');
+            sessionInfo=d.sessionInfo;
+        end
+
+        function obj=fn_saveSessionInfo(obj,sessionInfo)
+            % Explicitly persist neural changes and refresh matching metadata.
+            obj=obj.fn_updateTrialMetadata(sessionInfo);
+            fn_saveAnimalVariable(obj.ops.sessionInfoName,'sessionInfo',sessionInfo);
+            obj.fn_saveMetadata();
+            obj.fn_saveObject();
+        end
+
+        function obj=fn_updateTrialMetadata(obj,sessionInfo)
+            metadata=fn_stripAnimalNeuralFields(sessionInfo);
+            [obj.sessionInfoBeh,obj.trialInfo]=fn_getBehTrialInfo(metadata);
+        end
+
+        function fn_saveMetadata(obj)
+            fn_saveAnimalVariable(obj.ops.sessionInfoBehFile,'sessionInfoBeh',obj.sessionInfoBeh);
+            fn_saveAnimalVariable(obj.ops.trialInfoFile,'trialInfo',obj.trialInfo);
+        end
+
+        function fn_saveObject(obj)
+            % Saved variable name is ani. Neural results/derived day arrays are not saved.
+            fn_saveAnimalVariable(obj.ops.animalObjectFile,'ani',obj);
+        end
+
+        function [obj,sessionInfo] = getBehav(obj,sessionInfo)
+            persistResult=nargin<2;
+            if persistResult, sessionInfo=obj.fn_loadSessionInfo(); end
             matDir = [obj.ops.behavPath filesep 'matlab']; 
             filelist = dir([matDir filesep obj.ops.mouse '_*_2AFCsession*.mat']);
             disp(['Loading ' matDir ' for behavioral matlab files'])
             filename = {filelist.name};
 
             % Preserve original _spk.mat indices across exclusions and sorting.
-            if ~ismember('sessionRec',obj.sessionInfo.Properties.VariableNames)
-                obj.sessionInfo.sessionRec = (1:height(obj.sessionInfo))';
+            if ~ismember('sessionRec',sessionInfo.Properties.VariableNames)
+                sessionInfo.sessionRec = (1:height(sessionInfo))';
             end
             % Process the raw behavioral data into a table. Record both raw data and processed table
-            obj.sessionInfo.behSel = cell(height(obj.sessionInfo), 1);
+            sessionInfo.behSel = cell(height(sessionInfo), 1);
             
+            warningState=warning;
+            restoreWarnings=onCleanup(@()warning(warningState));
             warning off;
             for i = 1:length(filename)
-                tempFilename = strsplit(filename{i},'_');
+                [~,behaviorStem]=fileparts(filename{i});
+                tempFilename = strsplit(behaviorStem,'_');
                 day = str2double(tempFilename{2}); 
                 temp = strsplit(tempFilename{3},'session');
                 tempType = temp{1}; tempNumber = temp{2};
@@ -156,7 +194,7 @@ classdef Animal
 
                 allData(all(isnan(allData), 2),:) = [];
                 
-                tempIndex = find(obj.sessionInfo.date == day & strcmp(obj.sessionInfo.sessionName, tempName));
+                tempIndex = find(sessionInfo.date == day & strcmp(sessionInfo.sessionName, tempName));
 
                 beh = allData; behTable = table();
                 behTable.stimuli = beh(:,2);
@@ -172,28 +210,28 @@ classdef Animal
                 behTable.rewardFrame = beh(:,9); 
                 % Find the corresponding 
                 if length(tempIndex) == 1 % Behavioral session exists as a recording session
-                    obj.sessionInfo.beh(tempIndex) = {allData};
-                    obj.sessionInfo.behSel(tempIndex) = {behTable};
+                    sessionInfo.beh(tempIndex) = {allData};
+                    sessionInfo.behSel(tempIndex) = {behTable};
                 elseif isempty(tempIndex) % Behavioral session did not have recording
-                    tempIndex = size(obj.sessionInfo,1)+1;
-                    obj.sessionInfo.beh(tempIndex) = {allData};
-                    obj.sessionInfo.behSel(tempIndex) = {behTable};
-                    obj.sessionInfo.sessionName(tempIndex) = {tempName};
-                    obj.sessionInfo.date(tempIndex) = day;
-                    obj.sessionInfo.session(tempIndex) = str2double(tempNumber);
-                    obj.sessionInfo.sessionType(tempIndex) = {tempType};
-                    obj.sessionInfo.sessionRec(tempIndex) = 0; % No recording.
+                    tempIndex = size(sessionInfo,1)+1;
+                    sessionInfo.beh(tempIndex) = {allData};
+                    sessionInfo.behSel(tempIndex) = {behTable};
+                    sessionInfo.sessionName(tempIndex) = {tempName};
+                    sessionInfo.date(tempIndex) = day;
+                    sessionInfo.session(tempIndex) = str2double(tempNumber);
+                    sessionInfo.sessionType(tempIndex) = {tempType};
+                    sessionInfo.sessionRec(tempIndex) = 0; % No recording.
                 else
                     disp(['Critical error of session ' int2str(i) ', multiple match found'])
                 end
             end
-            warning on;
-            days = unique(obj.sessionInfo.date);
+            clear restoreWarnings
+            days = unique(sessionInfo.date);
             for i = 1:length(days)
-                selDay = find(obj.sessionInfo.date == days(i));
-                obj.sessionInfo.day(selDay) = i;
+                selDay = find(sessionInfo.date == days(i));
+                sessionInfo.day(selDay) = i;
             end 
-            obj.sessionInfo = sortrows(obj.sessionInfo, {'date', 'sessionName'});
+            sessionInfo = sortrows(sessionInfo, {'date', 'sessionName'});
 
             % match the wheel data with the correct session
             animalName = strsplit(obj.ID,'_'); animalName = animalName{1};
@@ -201,50 +239,36 @@ classdef Animal
                 temp = load([obj.ops.behavPath filesep animalName '_wheelData.mat']);
                 wheelData = temp.sessionTable; clear temp; 
                 for i = 1:size(wheelData,1)
-                    matchIdx = wheelData.SessionDate(i) == obj.sessionInfo.date;
-                    matchNumIdx = wheelData.SessionNumber(i) == obj.sessionInfo.session;
-                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), obj.sessionInfo.sessionType, 'UniformOutput',true);
+                    matchIdx = wheelData.SessionDate(i) == sessionInfo.date;
+                    matchNumIdx = wheelData.SessionNumber(i) == sessionInfo.session;
+                    matchTypeIdx = cellfun(@(x)(strcmp(x,wheelData.SessionType(i))), sessionInfo.sessionType, 'UniformOutput',true);
                     idx = find(matchIdx & matchTypeIdx & matchNumIdx);
                     if ~isempty(idx)
-                        obj.sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
-                        obj.sessionInfo.wheelTime(idx) = wheelData.wheelTime(i);
+                        sessionInfo.wheelFrame(idx) = wheelData.wheelFrame(i);
+                        sessionInfo.wheelTime(idx) = wheelData.wheelTime(i);
                     end 
                 end 
             catch
                 disp('no wheel data detected')
             end 
-            obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
+            sessionInfo = fn_encodeTrainingLabels(sessionInfo,fn_animalManualDayLabels(obj.ops));
+            if persistResult, obj=obj.fn_saveSessionInfo(sessionInfo); end
         end
 
-        function data = selData(obj,method, param)
-            switch method
-                case 'T1'
-                    selectedIdx = fn_selSession(obj.sessionInfo, 'dayRange', obj.ops.dayT1);
-                case 'T2'
-                    selectedIdx = fn_selSession(obj.sessionInfo, 'dayRange', obj.ops.dayT2);
-                case 'Interleave'
-                    selectedIdx = fn_selSession(obj.sessionInfo, 'dayRange', obj.ops.dayInterleave);
-                otherwise
-                    selectedIdx = fn_selSession(obj.sessionInfo, method, param);
-            end 
-            
-            data.sessionInfo = obj.sessionInfo(selectedIdx,:);
-            %data.TC = data.sessionInfo.TC{selectedIdx};
-
-
-            [data.dffStimList, data.selectedBehList] = fn_parseTrial(Fnew, beh, Fops, behOps,'stim');
-            [data.dffChoiceList, data.selectedBehList] = fn_parseTrial(Fnew, beh, Fops, behOps,'choice');
-
-
-        end 
-
-        function obj = parseTrial(obj)
+        function [obj,sessionInfo] = parseTrial(obj,sessionInfo)
+            persistResult=nargin<2;
+            if persistResult, sessionInfo=obj.fn_loadSessionInfo(); end
+            if ~ismember('TC',sessionInfo.Properties.VariableNames)
+                assert(ismember('dffStim',sessionInfo.Properties.VariableNames),'Animal:RawActivity', ...
+                    'sessionInfo has neither TC nor parsed activity.');
+                return;
+            end
             trimFrame = 100; trialStart = 30; 
-            for j= 1:size(obj.sessionInfo,1)
-                if ~isempty(obj.sessionInfo.TC{j}) & ~isempty(obj.sessionInfo.beh{j})
-                    %F = fn_getDff(obj.sessionInfo.TC{j},'method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',2000)';
-                    F = obj.sessionInfo.TC{j}'; 
-                    beh = obj.sessionInfo.beh{j};
+            for j= 1:size(sessionInfo,1)
+                if ~isempty(sessionInfo.TC{j}) & ~isempty(sessionInfo.beh{j})
+                    %F = fn_getDff(sessionInfo.TC{j},'method', 'mean','baselineCorrectionPostDff', true, 'baselineCorrectionWindow',2000)';
+                    F = sessionInfo.TC{j}';
+                    beh = sessionInfo.beh{j};
                     try
                         [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
                     catch ME
@@ -257,10 +281,10 @@ classdef Animal
                             'Parsing %d/%d behavior trials within %d imaging frames.\n'], ...
                             j,length(keepTrial),size(beh,1),nFrames);
                         beh = behTrim;
-                        obj.sessionInfo.beh{j} = behTrim;
-                        if ismember('behSel',obj.sessionInfo.Properties.VariableNames) && ...
-                                ~isempty(obj.sessionInfo.behSel{j})
-                            obj.sessionInfo.behSel{j} = trimBehSel(obj.sessionInfo.behSel{j},keepTrial);
+                        sessionInfo.beh{j} = behTrim;
+                        if ismember('behSel',sessionInfo.Properties.VariableNames) && ...
+                                ~isempty(sessionInfo.behSel{j})
+                            sessionInfo.behSel{j} = trimBehSel(sessionInfo.behSel{j},keepTrial);
                         end
                         [dffStim,dffChoice,dffReward] = fn_parseTrialTC(F,beh);
 
@@ -271,33 +295,34 @@ classdef Animal
                     dffReward = trimTC(dffReward,trimFrame);
 
                     
-                    obj.sessionInfo.dffStim{j} = dffStim;
-                    obj.sessionInfo.dffChoice{j} = dffChoice;
-                    obj.sessionInfo.dffReward{j} = dffReward;
+                    sessionInfo.dffStim{j} = dffStim;
+                    sessionInfo.dffChoice{j} = dffChoice;
+                    sessionInfo.dffReward{j} = dffReward;
                     
 
-                    if  ~isempty(beh) && ismember('wheelFrame',obj.sessionInfo.Properties.VariableNames)
-                    wheel = obj.sessionInfo.wheelFrame{j};
+                    if  ~isempty(beh) && ismember('wheelFrame',sessionInfo.Properties.VariableNames)
+                    wheel = sessionInfo.wheelFrame{j};
                     [wheelStim,wheelChoice,wheelReward] = fn_parseTrialTC(wheel,beh);
 
                     wheelStim = squeeze(trimTC(wheelStim,trimFrame));
                     wheelChoice = squeeze(trimTC(wheelChoice,trimFrame));
                     wheelReward = squeeze(trimTC(wheelReward,trimFrame));
 
-                    obj.sessionInfo.wheelStim{j} = wheelStim - repmat(wheelStim(trialStart,:),[size(wheelStim,1) 1]);
-                    obj.sessionInfo.wheelChoice{j} = wheelChoice - repmat(wheelChoice(trialStart,:),[size(wheelChoice,1) 1]);
-                    obj.sessionInfo.wheelReward{j} = wheelReward - repmat(wheelReward(trialStart,:),[size(wheelReward,1) 1]);
+                    sessionInfo.wheelStim{j} = wheelStim - repmat(wheelStim(trialStart,:),[size(wheelStim,1) 1]);
+                    sessionInfo.wheelChoice{j} = wheelChoice - repmat(wheelChoice(trialStart,:),[size(wheelChoice,1) 1]);
+                    sessionInfo.wheelReward{j} = wheelReward - repmat(wheelReward(trialStart,:),[size(wheelReward,1) 1]);
                     end 
                 end 
                 % lastly, keep the tuning sessions that are not parsed by behavior
-                if any(strcmp(obj.sessionInfo.sessionType{j},{'PT','puretone','pureTone','PureTone','expTone','ExpTone'}))
-                    obj.sessionInfo.tuning{j} = obj.sessionInfo.TC{j}';
+                if any(strcmp(sessionInfo.sessionType{j},{'PT','puretone','pureTone','PureTone','expTone','ExpTone'}))
+                    sessionInfo.tuning{j} = sessionInfo.TC{j}';
                 end 
             end 
-            if ismember('behSel',obj.sessionInfo.Properties.VariableNames)
-                obj.sessionInfo = fn_encodeTrainingLabels(obj.sessionInfo);
+            if ismember('behSel',sessionInfo.Properties.VariableNames)
+                sessionInfo = fn_encodeTrainingLabels(sessionInfo,fn_animalManualDayLabels(obj.ops));
             end
-            obj.sessionInfo.TC = [];
+            sessionInfo.TC = [];
+            if persistResult, obj=obj.fn_saveSessionInfo(sessionInfo); end
             function mat = trimTC(mat,trimFrame)
                 if size(mat,2) > trimFrame ; mat = mat(:,1:trimFrame,:); end 
 
@@ -336,17 +361,14 @@ classdef Animal
             parse(p,varargin{:});
             trackingMode = p.Results.trackingMode;
             minSessionsPerLearningPeriod = p.Results.minSessionsPerLearningPeriod;
-            sessionInfoAll = obj.sessionInfo;
-            tempSessionInfo = filterNeuralSessions(sessionInfoAll);
+            tempSessionInfo = filterNeuralSessions(obj.fn_loadSessionInfo());
             if strcmpi(trackingStr,'tracking')
-                % selTracking reads obj.sessionInfo, so temporarily give it
-                % only sessions that contain aligned neural/behavior trials.
-                % Restore the full table afterward so raw behavior is retained.
-                obj.sessionInfo = tempSessionInfo;
-                noRecordingFlag = cellfun(@isempty,obj.sessionInfo.ishere);
-                obj.sessionInfo = obj.sessionInfo(~noRecordingFlag,:);
-                [ishereAllSession,ishereCount,sessionSel] = obj.selTracking(trackingMode,...
-                    'minSessionsPerLearningPeriod',minSessionsPerLearningPeriod);
+                % Pass the filtered table explicitly; keep neural activity local.
+                sessionInfo = tempSessionInfo;
+                noRecordingFlag = cellfun(@isempty,sessionInfo.ishere);
+                sessionInfo = sessionInfo(~noRecordingFlag,:);
+                [ishereAllSession,~,sessionSel] = obj.selTracking(trackingMode,...
+                    'minSessionsPerLearningPeriod',minSessionsPerLearningPeriod,'SessionInfo',sessionInfo);
                 if strcmpi(trackingMode,'unrestrainedDays')
                     nSel = min(obj.ops.trackingSessionSel,length(sessionSel));
                 else
@@ -354,9 +376,8 @@ classdef Animal
                 end
                 sessionSel = sessionSel{nSel};
                 sessionSel = sort(sessionSel);
-                tempSessionInfo = obj.sessionInfo(sessionSel,:);
+                tempSessionInfo = sessionInfo(sessionSel,:);
                 ishereAllSession = ishereAllSession{nSel};
-                obj.sessionInfo = sessionInfoAll;
             end
             dayInfo = table();
             days = unique(tempSessionInfo.date);
@@ -365,8 +386,6 @@ classdef Animal
             for i = 1:length(days)
                 selDay = find(tempSessionInfo.date == days(i));
                 dayInfo.dayLabel{i} = getDayLabel(tempSessionInfo,selDay);
-                %tempIshere = cellfun(@nansum,obj.sessionInfo.ishere(selDay));
-                %selDay(tempIshere<(0.65*length(obj.sessionInfo.ishere{1}))) = [];
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffStim',selDay, i,3);
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffChoice',selDay, i,3);
                 dayInfo = catData(tempSessionInfo,dayInfo, 'dffReward',selDay, i,3);
@@ -566,7 +585,9 @@ classdef Animal
             if ~exist('trackingMode','var') || isempty(trackingMode); trackingMode = 'stageBalanced'; end
             p = inputParser;
             addParameter(p,'minSessionsPerLearningPeriod',8);
+            addParameter(p,'SessionInfo',obj.sessionInfoBeh,@istable);
             parse(p,varargin{:});
+            sessionInfo=p.Results.SessionInfo;
             minSessionsPerLearningPeriod = p.Results.minSessionsPerLearningPeriod;
             if ~isnumeric(minSessionsPerLearningPeriod)
                 error('minSessionsPerLearningPeriod must be numeric.')
@@ -580,11 +601,15 @@ classdef Animal
                 minSessionsPerLearningPeriod = 8;
             end
             minSessionsPerLearningPeriod = max(1,ceil(minSessionsPerLearningPeriod));
-            tempTrackingSession = fn_cell2mat(obj.sessionInfo.ishere,1); 
-            offsetMap = fn_cell2mat(obj.sessionInfo.offsetMap,3);
+            tempTrackingSession = fn_cell2mat(sessionInfo.ishere,1);
+            offsetMap = fn_cell2mat(sessionInfo.offsetMap,3);
 
+            alignment=obj.alignmentOps;
+            if isempty(alignment)||~isfield(alignment,'refStackSelLoc')
+                alignment=fn_loadAnimalAlignment(obj.ops.alignOpsPath);
+            end
             avgOffset = squeeze(nanmean(nanmean(offsetMap,1),2))...
-                - obj.alignmentOps.refStackSelLoc(4); 
+                - alignment.refStackSelLoc(4);
             ishereMat = tempTrackingSession == 1;
             nSession = size(ishereMat,1);
             nNeuron = size(ishereMat,2);
@@ -625,13 +650,13 @@ classdef Animal
 
             function [ishereSession,sessionCount,sessionSel] = selectStageBalanced()
             stageLabels = {'T1E','T1M','T1L','T2E','T2M','T2L','Int'};
-            if ~ismember('dayLabel',obj.sessionInfo.Properties.VariableNames)
+            if ~ismember('dayLabel',sessionInfo.Properties.VariableNames)
                 warning('dayLabel not found in sessionInfo. Falling back to unrestrainedDays tracking.')
                 [ishereSession,sessionCount,sessionSel] = selectUnrestrainedDays();
                 return
             end
 
-            dayLabel = obj.sessionInfo.dayLabel;
+            dayLabel = sessionInfo.dayLabel;
             if ~iscell(dayLabel)
                 dayLabel = cellstr(string(dayLabel));
             end
@@ -1008,8 +1033,6 @@ classdef Animal
                 stim2Reg = zeros(size(wheelStim));
                 rewReg = zeros(size(wheelStim));
                 platformReg = zeros(size(wheelStim));
-                choice1ProgressReg = zeros(size(wheelStim));
-                choice2ProgressReg = zeros(size(wheelStim));
                 wheelReg = cat(1,diff(wheelStim,1,1),zeros(1,size(behSel,1)));
 
                 stim1Flag = behSel.stimuli==1; stim1Reg (preTone+1,stim1Flag) = 1;
@@ -1099,27 +1122,6 @@ classdef Animal
             end 
         end 
 
-        function visualizePSTHcluster(obj)
-            clusterFlag = obj.analysis.initialClustering.label(obj.ops.ishereAll);
-            clusterFlag2 = obj.analysis.secondClustering.label(obj.ops.ishereAll);
-            tempData = obj.trialTypeInfo.dffStim;
-
-            plotIdx = [1 4 5 8];
-            figure; 
-            for k =1:4
-                for i = 1:length(plotIdx)
-                    subplot(4,length(plotIdx),i+(k-1)*4); 
-                    for j = 1:length(tempData)
-                        plot(nanmean(nanmean(tempData{j}{plotIdx(i)}(clusterFlag2==k,:,:),1),3)); hold on; 
-                    end 
-                    legend({'T1-1','T1-2','T1-3','T2-2','T2-3','T1T2'})
-                end
-            end 
-            
-
-
-        end 
-
         function visualizePSTH(obj, stim,choice, varargin)
             p = inputParser; addParameter(p,'missFlag',false); addParameter(p,'closeupFlag',false); parse(p,varargin{:});
 
@@ -1128,7 +1130,40 @@ classdef Animal
             computePSTH(obj,'choice',stim,choice,p.Results.missFlag,p.Results.closeupFlag);    
         end
 
-        
+    end
+
+    methods (Static)
+        function obj=loadobj(saved)
+            % MATLAB passes a struct when an older class has removed properties.
+            if isa(saved,'Animal')
+                obj=saved;
+            else
+                assert(isstruct(saved)&&isscalar(saved),'Animal:Cache', ...
+                    'Saved Animal metadata must be a scalar object or struct.');
+                obj=Animal();
+                for name={'ID','ops','alignmentOps'}
+                    if isfield(saved,name{1}), obj.(name{1})=saved.(name{1}); end
+                end
+                if isfield(saved,'sessionInfoBeh')&&istable(saved.sessionInfoBeh)
+                    obj.sessionInfoBeh=saved.sessionInfoBeh;
+                elseif isfield(saved,'sessionInfo')&&istable(saved.sessionInfo)
+                    obj.sessionInfoBeh=fn_stripAnimalNeuralFields(saved.sessionInfo);
+                end
+                if isfield(saved,'trialInfo')&&istable(saved.trialInfo)
+                    obj.trialInfo=saved.trialInfo;
+                elseif isfield(saved,'trialData')&&istable(saved.trialData)
+                    % The old name is accepted only at the serialization boundary.
+                    obj.trialInfo=saved.trialData;
+                elseif ~isempty(obj.sessionInfoBeh)
+                    fn_animalCurationPath();
+                    obj=obj.fn_updateTrialMetadata(obj.sessionInfoBeh);
+                else
+                    error('Animal:Cache','Saved Animal has no trialInfo or recoverable trial metadata.');
+                end
+            end
+            obj.sessionInfoBeh=fn_stripAnimalNeuralFields(obj.sessionInfoBeh);
+            obj.alignmentOps=fn_compactAnimalAlignment(obj.alignmentOps);
+        end
     end
 end
 
@@ -1301,22 +1336,11 @@ function selAct = computePSTH(obj,alignStr,missFlag,closeupFlag)
 
 end 
 
-% HELPER FUNCTIONS -- LOAD TC, ONE AREA OR MULTIPLE AREA
+% Load neural activity for one animal/area.
 function actCell = loadTC(TCname,keyField)
      disp('Loading TC file') ;tic;
-     if iscell(TCname) && length(TCname)>1
-         actCell = cell(length(TCname));
-         for l = 1:length(TCname)
-            temp = load(TCname{l},keyField);
-            actCell{l} = temp.(keyField);
-            actCell{l} = cellfun(@single, actCell{l},'UniformOutput',false);
-         end 
-         clear temp;
-     else
-         temp = load(TCname,keyField);
-         actCell = temp.(keyField); clear temp;
-         actCell = cellfun(@single,actCell,'UniformOutput',false);
-     end 
+     temp = load(TCname,keyField);
+     actCell = cellfun(@single,temp.(keyField),'UniformOutput',false);
      reportActCellNan(actCell,keyField,'after load');
      toc; disp('Loading data done!')
 end 
@@ -1324,8 +1348,6 @@ end
 % HELPER FUNCTIONS -- LOAD TC
 function actCell = spkNorm(actCell)
     reportActCellNan(actCell,'spk','before normalization');
-    spkVarBef = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);   
-    spkMeanBef = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);    
     spkNorm = zeros(length(actCell),size(actCell{1},2)); 
     for i = 1:length(actCell)
         for j =1:size(actCell{i},2)
@@ -1349,8 +1371,6 @@ function actCell = spkNorm(actCell)
         actCell{i} = actCell{i} ./ repmat(meanA,[size(actCell{i},1) 1]);
     end 
     reportActCellNan(actCell,'spk','after normalization');
-    spkVarAft = fn_cell2mat(cellfun(@(x)(var(x,0,1)),actCell,'UniformOutput',false),1);
-    spkMeanAft = fn_cell2mat(cellfun(@(x)(nanmean(x,1)),actCell,'UniformOutput',false),1);
 end 
 
 function reportActCellNan(actCell,keyField,stageName)
@@ -1379,13 +1399,13 @@ end
 % HELPER FUNCTIONS -- LOAD sessionInf, rename the table variables
 function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingName,alignOpsPath,obj)
     % load sessionInfo
-    load(infoName,'sessionInfo','animalID'); 
+    load(infoName,'sessionInfo');
 
     sessionInfo = normalizeSessionInfo(sessionInfo);
     sessionInfo.sessionRec = (1:height(sessionInfo))'; % Original TC cell indices.
 
     if isempty(actCell)
-        sessionInfo.TC(:) = nan; 
+        sessionInfo.TC = cell(height(sessionInfo),1);
     else
         sessionInfo.TC = actCell';
     end
@@ -1416,7 +1436,6 @@ function [sessionInfo, alignmentOps] =getSessionInfo(infoName,actCell,trackingNa
     if ~isempty(actCell)
         sessionInfo = dealExceptions(sessionInfo,obj.ops.mouse,obj.ID);
     end
-    % sessionInfo.TC(~cellFlag) = {[]};
 end 
 
 function sessionInfo = normalizeSessionInfo(sessionInfo)
@@ -1439,6 +1458,89 @@ function sessionInfo = renameSessionInfoVar(sessionInfo,oldName,newName)
 end
 
 
-% HELPTER FUNCTION -- MATCH RT IN TRIALTYPEINFO
+function labels=fn_animalManualDayLabels(ops)
+    % Explicit labels take priority over a label file, then automatic detection.
+    labels=[];
+    if isfield(ops,'dayLabel') && ~isempty(ops.dayLabel)
+        labels=ops.dayLabel;
+    elseif isfield(ops,'dayLabelName') && isfile(ops.dayLabelName)
+        d=load(ops.dayLabelName,'dayLabel');
+        assert(isfield(d,'dayLabel'),'Animal:DayLabels', ...
+            'dayLabelName must point to a MAT file containing dayLabel.');
+        labels=d.dayLabel;
+    end
+end
 
+function ops=fn_animalStorageOptions(ops,id)
+    assert(isfield(ops,'sessionInfoName')&&strlength(string(ops.sessionInfoName))>0, ...
+        'Animal:StorageConfig','Set myOps.sessionInfoName in the animal _param.m file.');
+    [folder,stem]=fileparts(char(ops.sessionInfoName));
+    defaults=struct('animalObjectFile',fullfile(folder,[id '_animal.mat']), ...
+        'sessionInfoBehFile',fullfile(folder,[stem '_sessionInfoBeh.mat']), ...
+        'trialInfoFile',fullfile(folder,[stem '_trialInfo.mat']));
+    names=fieldnames(defaults);
+    for i=1:numel(names)
+        if ~isfield(ops,names{i})||strlength(string(ops.(names{i})))==0
+            ops.(names{i})=defaults.(names{i});
+        end
+    end
+    paths=string({ops.sessionInfoName,ops.animalObjectFile,ops.sessionInfoBehFile,ops.trialInfoFile});
+    % Resolve relative path components before checking for accidental collisions.
+    resolved=strings(size(paths));
+    for i=1:numel(paths)
+        resolved(i)=string(char(java.io.File(char(paths(i))).getCanonicalPath()));
+    end
+    assert(numel(unique(lower(resolved)))==4,'Animal:StorageConfig', ...
+        'Neural, Animal, sessionInfoBeh, and trialInfo files must have different paths.');
+end
 
+function metadata=fn_stripAnimalNeuralFields(metadata)
+    assert(istable(metadata),'Animal:Metadata','Session metadata must be a table.');
+    remove=intersect({'TC','tuning','dffStim','dffChoice','dffReward'}, ...
+        metadata.Properties.VariableNames,'stable');
+    metadata(:,remove)=[];
+end
+
+function alignment=fn_compactAnimalAlignment(fullOps)
+    alignment=struct();
+    if isstruct(fullOps)&&isfield(fullOps,'refStackSelLoc')
+        alignment.refStackSelLoc=fullOps.refStackSelLoc;
+    end
+end
+
+function alignment=fn_loadAnimalAlignment(folder)
+    file=fullfile(folder,'alignedOps.mat');
+    if isfile(file)
+        d=load(file,'alignedOps');
+        alignment=fn_compactAnimalAlignment(d.alignedOps);
+    else
+        d=load(fullfile(folder,'ops.mat'),'ops');
+        alignment=fn_compactAnimalAlignment(d.ops);
+    end
+    assert(isfield(alignment,'refStackSelLoc'),'Animal:Alignment', ...
+        'Legacy selTracking requires refStackSelLoc in the alignment options.');
+end
+
+function fn_animalCurationPath()
+    repo=fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    root=fullfile(repo,'organizer','trialCuration');
+    addpath(root,fullfile(root,'config'),fullfile(root,'helper'),fullfile(root,'tracking'));
+    addpath(fullfile(repo,'organizer','helper'));
+end
+
+function fn_saveAnimalVariable(file,name,value)
+    % Write beside the target, then replace only after a successful save.
+    folder=fileparts(file);
+    if isempty(folder), folder=pwd; end
+    if ~isfolder(folder), mkdir(folder); end
+    temporary=[tempname(folder) '.mat'];
+    cleanup=onCleanup(@()fn_removeAnimalTemporary(temporary)); %#ok<NASGU>
+    payload=struct(); payload.(name)=value;
+    save(temporary,'-struct','payload','-v7.3');
+    [ok,message]=movefile(temporary,file,'f');
+    assert(ok,'Animal:Save','Cannot save %s: %s',file,message);
+end
+
+function fn_removeAnimalTemporary(file)
+    if isfile(file), delete(file); end
+end

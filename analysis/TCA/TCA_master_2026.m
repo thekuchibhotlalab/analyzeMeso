@@ -231,15 +231,15 @@ title('Correlation matrix of the stimulus weights')
 %     decreasing, or flat over learning. This tells how each dynamic change over learning. 
 % Trial type: s1a1, s2a2, s3a1, and s4a1 respectively. This tells whether each component 
 %     is task-specific, task-invariant, or trial-type specific
-subtitles = {'neural','time','learning phase','trial type'};
+subtitles = {'neural','time','learning phase','trial type','task'};
 figure;
-for i = 1:4
-    subplot(1,4,i);
+for i = 1:5
+    subplot(1,5,i);
     temp = M{nModel}.U{i}'; 
     imagesc(temp); colorbar; clim([prctile(temp(:),5) prctile(temp(:),95)])
     xlabel(subtitles{i})
     ylabel('nTC')
-    if i==2; xline(10); end 
+    if i==2; xline(17);xline(10); end 
 end 
 % Plot 3 -- The 'variance explained of each component'
 % kind of lick variance explained plot for PCA, but different in the sense that TCs are

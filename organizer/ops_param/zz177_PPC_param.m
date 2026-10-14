@@ -1,21 +1,31 @@
 myOps.mouse = 'zz177';
-myOps.area = 'PPC'; 
-myOps.ID = [myOps.mouse '_' myOps.area]; 
+myOps.area = 'PPC';
+myOps.ID = [myOps.mouse '_' myOps.area];
 
+myOps.TCpath = 'B:\zz177_PPC';
+myOps.alignOpsPath = 'B:\zz177_PPC';
+myOps.behavPath = 'G:\ziyi\mesoData\zz177_behavior';
 
-myOps.TCpath = ['B:\' myOps.ID];
+myOps.dataAnalyzedPath = 'B:\animal';
+
 myOps.TCname = [myOps.TCpath filesep myOps.ID '_TC.mat'];
 myOps.spkname = [myOps.TCpath filesep myOps.ID '_spk.mat'];
 myOps.infoName = [myOps.TCpath filesep myOps.ID '_sessionInfo.mat'];
 myOps.trackingName = [myOps.TCpath filesep 'stackROI_final_tracked.mat'];
-myOps.behavPath = ['G:\ziyi\mesoData\' myOps.mouse '_behavior'];
-myOps.alignOpsPath = ['B:\' myOps.ID];
-myOps.sessionInfoName = ['B:\analysis\animal' filesep myOps.ID '_parsedTrial.mat'];
+myOps.sessionInfoName = fullfile(myOps.dataAnalyzedPath,'parsedTrial',[myOps.ID '_parsedTrial.mat']);
+myOps.sessionInfoBehFile = fullfile(fileparts(myOps.sessionInfoName),[myOps.ID '_parsedTrial_sessionInfoBeh.mat']);
+myOps.trialInfoFile = fullfile(fileparts(myOps.sessionInfoName),[myOps.ID '_parsedTrial_trialInfo.mat']);
+% Separate metadata-only Animal object; neural sessionInfo stays in the file above.
+myOps.animalObjectFile = fullfile(myOps.dataAnalyzedPath,[myOps.ID '_animal.mat']);
 
-myOps.frameRate = 15; 
-myOps.trackingSessionSel = 100; 
+myOps.dayLabelName = [myOps.TCpath filesep myOps.ID '_dayLabel.mat'];
+
+myOps.frameRate = 15;
+
+myOps.normSpk = true;
+
+% Existing animal-specific settings for legacy analyses.
+myOps.trackingSessionSel = 100;
 myOps.chunkDays = {[1],[ 2 3],[9 10],... % T1 naive to expert
-    [11 12],[16 18 ], [21:24],... % T2 naive to expert 
+    [11 12],[16 18 ], [21:24],... % T2 naive to expert
     [ 25]}; % interleave days
-
-myOps.normSpk = true; 

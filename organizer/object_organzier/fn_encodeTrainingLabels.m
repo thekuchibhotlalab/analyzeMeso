@@ -1,4 +1,4 @@
-function sessionInfo = fn_encodeTrainingLabels(sessionInfo)
+function sessionInfo = fn_encodeTrainingLabels(sessionInfo,manualDayLabels)
 %FN_ENCODETRAININGLABELS Add task accuracy and training-period labels.
 %
 % Adds per-session:
@@ -8,6 +8,9 @@ function sessionInfo = fn_encodeTrainingLabels(sessionInfo)
 % dayLabel is one of {'T1E','T1M','T1L','T2E','T2M','T2L','Int',''}.
 % dayLabel is assigned per date, so all task sessions on the same day share
 % the same dayLabel.
+% Optional manualDayLabels: one text label per session row. If supplied,
+% preserve these labels and skip automatic learning-period detection, while
+% still computing taskLabel, accuracy, and trial counts. [] uses detection.
 
 nSession = height(sessionInfo);
 sessionInfo.T1acc = nan(nSession,1);
@@ -16,6 +19,18 @@ sessionInfo.T1nTrial = zeros(nSession,1);
 sessionInfo.T2nTrial = zeros(nSession,1);
 sessionInfo.taskLabel = repmat({''},nSession,1);
 sessionInfo.dayLabel = repmat({''},nSession,1);
+useManual=nargin>=2 && ~isempty(manualDayLabels);
+if useManual
+    assert(isstring(manualDayLabels)||iscellstr(manualDayLabels)|| ...
+        ischar(manualDayLabels)||iscategorical(manualDayLabels), ...
+        'Animal:DayLabels','dayLabel must contain text labels.');
+    labels=string(manualDayLabels);
+    assert(isvector(labels)&&numel(labels)==nSession, ...
+        'Animal:DayLabelCount', ...
+        'Provide one dayLabel per sessionInfo row (%d labels required, %d supplied).', ...
+        nSession,numel(labels));
+    sessionInfo.dayLabel=cellstr(labels(:));
+end
 
 if ~ismember('behSel',sessionInfo.Properties.VariableNames)
     return
@@ -66,7 +81,9 @@ for i = 1:nSession
     end
 end
 
-sessionInfo.dayLabel = assignDayLabels(sessionInfo);
+if ~useManual
+    sessionInfo.dayLabel = assignDayLabels(sessionInfo);
+end
 end
 
 function tf = isBehaviorSession(sessionType)
