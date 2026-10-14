@@ -2,7 +2,7 @@ aniPath = 'B:\animal';
 
 animals = {'zz153_PPC','zz159_PPC',...
            'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
-%% Save animal Data
+%% Load animal Data
 allAni = {};
 for i = 1:length(animals)
     load([aniPath filesep animals{i} '_animal.mat'],'ani');
@@ -14,14 +14,13 @@ cfg = fn_interleaveTrialSelectionConfig();
 allTrialsel = {};
 for i = 1:length(animals)
     trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);
-    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel, 'PlotSavePath', 'B:\analysis\trialSelection');
-    
+    allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel, 'PlotSavePath', 'B:\analysis\trialSelection');
+    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel,'DataPath', putYourDataPath);
 end
-
+%save('allTrialsel.mat','allTrialsel')
 %%
-tempAct = cell(12, numel(allTrialsel));
-
-for i = 1:12                      % Conditions
+tempAct = cell(8, numel(allTrialsel));
+for i = 1:8                      % Conditions
     for a = 1:numel(allTrialsel)   % Animals
         X = allTrialsel{a}.neuralSelection(i).neuralRaw;
 
@@ -37,7 +36,7 @@ repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
-intNames = ["IntT1_S1_L", "IntT1_S2_R", "IntT2_S3_L", "IntT2_S4_R"];
+intNames = ["T1_S1_L", "T1_S2_R", "T2_S3_L", "T2_S4_R","Int_S1_L","Int_S2_R","Int_S4_R"];
 intAct = cell(4,numel(allTrialsel));
 for a = 1:numel(allTrialsel)
     names = string({allTrialsel{a}.neuralSelection.name});
