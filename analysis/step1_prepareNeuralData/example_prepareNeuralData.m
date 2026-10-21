@@ -1,3 +1,4 @@
+clear;
 aniPath = 'B:\animal';
 
 animals = {'zz153_PPC','zz159_PPC',...
@@ -11,6 +12,16 @@ end
 
 %% load data accoridng to cfg
 cfg = fn_interleaveTrialSelectionConfig();
+allTrialsel = {};
+for i = 1:length(animals)
+    trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);
+    allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel, 'PlotSavePath', 'B:\analysis\trialSelection');
+    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel,'DataPath', putYourDataPath);
+end
+%save('B:\analysis\trialSelection\interleavedAnalysis\allTrialsel.mat','allTrialsel','-v7.3')
+
+%% load data accoridng to cfg
+cfg = fn_T2E_Int_TrialSelectionConfig();
 allTrialsel = {};
 for i = 1:length(animals)
     trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);
@@ -36,20 +47,22 @@ repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
-intNames = ["T1_S1_L", "T1_S2_R", "T2_S3_L", "T2_S4_R","Int_S1_L","Int_S2_R","Int_S4_R"];
+%intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
+%intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
+
+
+intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
 intAct = cell(4,numel(allTrialsel));
 for a = 1:numel(allTrialsel)
     names = string({allTrialsel{a}.neuralSelection.name});
     [found,rows] = ismember(intNames,names);
     assert(all(found),'The selection must include all four Int condition definitions.');
-    for k = 1:4
+    for k = 1:length(rows)
         trials = allTrialsel{a}.neuralSelection(rows(k)).trialInfoNeural;
-        assert(all(strcmpi(strtrim(string(trials.dayLabel)),"Int")), ...
-            'Only Int trials may enter this analysis.');
         intAct{k,a} = tempAct{rows(k),a};
     end
 end
-
+%%
 opts = fn_taskActionGeometryConfig();
 opts.animalLabels = string(animals);
 opts.eventFrame = allTrialsel{1}.cfg.alignedEventFrame;
@@ -59,7 +72,7 @@ for a = 1:numel(allAni)
         allTrialsel{a}.cfg.alignedEventFrame==opts.eventFrame, ...
         'Animals must have matching time bins and alignment.');
 end
-opts.timeWindow = [];         % Whole trial; or e.g. [-0.5 1] seconds.
+opts.timeWindow = [-0.5 0.2];         % Whole trial; or e.g. [-0.5 1] seconds.
 opts.nComponents = 3;
 opts.normalization = 'zscore';
 opts.splitUnit = 'trial';     % Raw arrays do not contain session identities.

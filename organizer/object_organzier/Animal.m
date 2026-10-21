@@ -106,18 +106,20 @@ classdef Animal
                 'alignmentOps',fn_compactAnimalAlignment(obj.alignmentOps));
         end
 
-        function curated=fn_prepareTrialData(obj,cfg,varargin)
+        function [curated,figures]=fn_prepareTrialData(obj,cfg,varargin)
             % Query the object's metadata; loadNeural defaults to false.
+            % Second output contains figure handles, separate from saved data.
             % 'MakePlot',true displays RT and tracking plots (default false).
             fn_animalCurationPath();
             if nargin<2 || isempty(cfg), cfg=fn_defaultTrialSelectionConfig(); end
             cfg.sessionInfoFile=obj.ops.sessionInfoName;
             cfg.animalID=string(obj.ID);
-            curated=fn_prepareTrialData(obj.trialInfo,obj.sessionInfoBeh,cfg,varargin{:});
+            [curated,figures]=fn_prepareTrialData(obj.trialInfo,obj.sessionInfoBeh,cfg,varargin{:});
         end
 
-        function curated=fn_prepareNeuralData(obj,curated,varargin)
+        function [curated,figures]=fn_prepareNeuralData(obj,curated,varargin)
             % Activity is returned to the caller and never retained in Animal.
+            % Second output contains figure handles, separate from saved data.
             % Optional: 'ShowPlots',false, 'PlotSavePath','' (PNG folder).
             % 'DataPath': local MAT file or folder overriding ops.sessionInfoName.
             fn_animalCurationPath();
@@ -129,7 +131,7 @@ classdef Animal
             end
             source=[];
             if isfield(obj.ops,'sessionInfoName'), source=obj.ops.sessionInfoName; end
-            curated=fn_prepareNeuralData(curated,source,varargin{:});
+            [curated,figures]=fn_prepareNeuralData(curated,source,varargin{:});
         end
 
         function sessionInfo=fn_loadSessionInfo(obj)

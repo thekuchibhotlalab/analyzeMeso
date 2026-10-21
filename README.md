@@ -38,7 +38,9 @@ unless explicitly requested.
 | [analysis/step0_createAnimals](analysis/step0_createAnimals) | Session organization and example Animal creation. |
 | [analysis/step1_prepareNeuralData](analysis/step1_prepareNeuralData) | Editable example for preparing responses across animals. |
 | [analysis/TCA](analysis/TCA) | Tensor component analysis workflows. |
-| [analysis/taskActionGeometry](analysis/taskActionGeometry) | Task/action subspaces and population geometry. |
+| [analysis/taskActionGeometry](analysis/taskActionGeometry/README.md) | Fixed linear neural axes, task/action variance, and geometry. |
+| [analysis/taskActionGeometryEmbedding](analysis/taskActionGeometryEmbedding/README.md) | Trial-averaged 2D UMAP, pooled across animals and colored by condition/action/task. |
+| [analysis/earlyLearningProgression](analysis/earlyLearningProgression/README.md) | Early trial PSTHs, start/end comparisons, and condition-specific high-variance or trending neuron subsets. |
 | [analysis/taskSpecific](analysis/taskSpecific), [analysis/trackingEval](analysis/trackingEval) | Additional task-specific and tracking analyses. |
 | [analysis/oldAnalysis](analysis/oldAnalysis) | Archived analyses; these are not the current trial-selection entry points. |
 
@@ -278,6 +280,35 @@ application.
 | Deconvolve | [step4_extractTC/deconv/deconvolve_TC.py](pythonPackageRockfish/registration/step4_extractTC/deconv/deconvolve_TC.py) | Reads `data_F.mat`; writes `data_dff.mat`, `data_C.mat`, `data_S.mat`, and `data_spkOps.mat`. Fixed-decay variants and statistics tools are in the same folder. |
 | Organize for MATLAB | [step5_organizeData/fn_step0_organizeData.py](pythonPackageRockfish/registration/step5_organizeData/fn_step0_organizeData.py) | Builds `<ID>_TC.mat`, `<ID>_sessionInfo.mat`, and, when spike inputs exist, `<ID>_spk.mat`. These are upstream of Animal's parsed-trial files. |
 
+### Two-channel TIFFs with two ROIs
+
+Use [fn_parseROI_2ch.py](pythonPackageRockfish/registration/step0_convertH5/fn_parseROI_2ch.py)
+for recordings with both green and red channels saved. Edit the settings at the
+bottom of the script, then run it from the animal/data directory. It scans TIFFs
+in immediate session subfolders, just like the original ROI converter.
+
+```python
+roi_order_input = ["PPC", "AC"]
+roi_sizes_input = [788, 562]             # Top-to-bottom heights, excluding gap.
+channel_order_input = ("green", "red")  # Saved order; reverse if red comes first.
+save_channels_input = ("green", "red")  # Use ("green",) to omit red output.
+```
+
+Outputs follow `fn_parseROI.py`: `<channel>_<ROI>/<renamed-stem>_parsed.h5` and a
+matching `_meanImg.mat`, directly in each channel/ROI folder. For example,
+`zz180_20260302_2AFC_00001.tif` becomes `zz180_20260302_2AFC1_parsed.h5`.
+Both channels are saved for both ROIs. Existing output subfolders containing
+`stack` are moved under that ROI's `stack/` folder, as in the original converter.
+Keep the companion `fn_saveh5_2ch.py` beside the main script.
+The script settings use alternating green/red pages starting in the specified
+order **within each TIFF file**. Optional `layout="auto"` also supports a named
+channel dimension when available. It does not infer
+channel identity from brightness. Each channel gets its own frames and mean
+image. HDF5 `/data` is frame × X × Y on disk and Y × X × frame in MATLAB; pixel
+dtype is preserved. Existing outputs are not replaced unless `overwrite=True`.
+
+### Example Python commands
+
 Command examples for stages with command-line arguments, from the repository
 root on the cluster (run each only after its upstream inputs are prepared):
 
@@ -302,24 +333,120 @@ dataset-specific; the directory sequence is not an unattended end-to-end runner.
 
 ## Downstream population analyses
 
-[TCA](analysis/TCA) and [task/action geometry](analysis/taskActionGeometry) consume
-curated responses. The geometry functions also accept a simple `4 × nAnimal`
-cell array: rows are T1-left, T1-right, T2-left, T2-right; each entry is
-neuron × time × trial. Keep neuron identities/order consistent across the four
-conditions within each animal and use matching time alignment across animals.
+### Preliminary early-learning progression
+
+[earlyLearningProgression](analysis/earlyLearningProgression/README.md) uses the
+same condition × animal activity cells, but preserves the third dimension as
+**chronological within-condition trial order**. A table with only `stimulus`
+labels is enough. It plots the first three individual-trial PSTHs, first-five
+versus last-five averages, and progression across the first 30 trials for both
+all pooled neurons and condition-specific selected neurons.
 
 ```matlab
-opts = fn_taskActionGeometryConfig();
-linear = fn_analyzeTaskActionSubspaces(intAct,opts);
-geometry = fn_analyzeTaskActionManifold(intAct,opts);
+addpath('analysis/earlyLearningProgression');
+conditions=table([1;2],'VariableNames',{'stimulus'});
+[cfg,plotCfg]=fn_trialProgressionConfig();
+cfg.nProgressionTrials=30;
+cfg.selectionMethod='variance'; % Or 'progression' for a linear trial-order trend.
+cfg.comparisonReference='all';  % Or 'progression': compare within the first 30.
+[progression,figures]=fn_analyzeTrialProgression(earlyAct,conditions,cfg,plotCfg);
+```
+
+Variance is measured across trials at each time point, then averaged over time.
+Progression mode ranks the variance explained by a linear trial-order trend;
+it can restrict selection to increasing or decreasing neurons. Trial ranges,
+scoring-time window, and subset size are configurable. The reference documents
+the formulas, pooled-animal weighting, chronology requirements, and the
+selection bias inherent in plotting neurons chosen using the same trials.
+
+### Fixed linear task/action geometry
+
+[TCA](analysis/TCA) and [task/action geometry](analysis/taskActionGeometry) consume
+curated responses. The unified geometry function accepts an `nCondition × nAnimal`
+cell array, with neuron × time × trial arrays in each entry, plus a condition
+table containing `conditionName` and categorical variables such as task/action.
+Keep neuron identities/order consistent across conditions within each animal
+and use matching time alignment across animals. All animals' neurons form one
+pooled population for fitting axes.
+
+```matlab
+conditions = table(["T1L";"T1R";"T2L";"T2R"], ...
+    ["L";"R";"L";"R"],["T1";"T1";"T2";"T2"], ...
+    'VariableNames',{'conditionName','action','task'});
+[cfg,plotCfg] = fn_neuralGeometryConfig();
+cfg.method='lda'; cfg.nAxes=3; cfg.normalization='none';
+plotCfg.trialTypes=conditions.conditionName;
+plotCfg.trajectory='both';
+plotCfg.showConditionContribution=false;
+[geometry,figures] = fn_analyzeNeuralGeometry(intAct,conditions,cfg,plotCfg);
 ```
 
 Use only the intended learning period when building `intAct` (for example,
 fully interleaved `Int`). Animals may have different trial and neuron counts;
 the analysis combines condition means along the neuron dimension rather than
 pairing unrelated trials across animals. See the
-[geometry reference](analysis/taskActionGeometry/README.txt) for definitions,
-normalization, cross-validation, and output fields.
+[geometry reference](analysis/taskActionGeometry/README.md) for the full math,
+implementation, normalization, metrics, and output fields. These results are
+descriptive in-sample estimates. Older task/action-specific functions remain in
+`analysis/taskActionGeometry/legacy`; add that folder to run older scripts.
+
+Each axis has one weight per pooled neuron, fixed across the selected time window.
+Default LDA maximizes between-level squared separation divided by regularized
+within-level variance. `meanSquared` uses unweighted mean contrasts; `regression`
+jointly estimates task/action main effects before fitting their axes. Consecutive
+axes are orthogonal **within a variable**; task and action bases can overlap.
+Pooling time before fitting can cancel a contrast that reverses sign during the trial.
+
+Variance is evaluated at each time point, balancing conditions. Total variance is
+between-condition mean variance plus within-condition trial variance. Task/action
+curves show the unique main-effect reduction in regression residual variance,
+divided by that total; optional condition contributions instead describe each
+condition's squared deviation from the grand mean. Separation capture has a
+different denominator: the variable's between-level energy across all neurons.
+See the reference for exact formulas, interaction/confounding behavior, and limits.
+
+Four grouped figure outputs are available: activity sanity checks, projection
+time courses, variance/weight similarity, and optional 3D/2D trajectories.
+Replot saved results with `fn_plotNeuralGeometry(geometry,plotCfg)`.
+`plotCfg.similarity='correlation'` compares centered neuron-weight vectors;
+`'cosine'` leaves them uncentered. Both use blue (-1), white (0), red (+1).
+Graphics are separate from `geometry`; `visible=false` plus `savePath` saves hidden PNGs.
+
+### Nonlinear trial-averaged UMAP
+
+[taskActionGeometryEmbedding](analysis/taskActionGeometryEmbedding/README.md)
+uses the same activity/condition-table input but its **own** configuration:
+
+```matlab
+addpath('analysis/taskActionGeometryEmbedding');
+% Set up the external Herzenberg MATLAB UMAP package once; see its README.
+[embedCfg,embedPlotCfg]=fn_neuralEmbeddingConfig();
+embedCfg.nNeighbors=100; embedCfg.minDist=0.1;
+embedCfg.metric='correlation'; embedCfg.normalization='none';
+embedPlotCfg.colorBy=["conditionName","action","task"];
+[embedding,embeddingFigures]=fn_analyzeNeuralEmbedding( ...
+    intAct,conditions,embedCfg,embedPlotCfg);
+```
+
+Trials are averaged within each condition/animal and neurons concatenate across
+animals. The embedding input is **(nCondition × nTime) rows by pooled-neuron
+columns**, giving one 2D point per condition/time bin. One unsupervised fit is
+recolored by condition, action, and task; labels do not enter the fit.
+A final panel colors the same points by within-trial time across all conditions
+(`embedPlotCfg.showTime=true` by default).
+
+The starting parameters follow the UMAP methods in
+[*Learning produces an orthogonalized state machine in the hippocampus*](https://www.nature.com/articles/s41586-024-08548-w),
+adapted here from frame-level 3D embeddings to trial-averaged 2D embeddings.
+The [embedding reference](analysis/taskActionGeometryEmbedding/README.md) explains
+the population-vector construction, distance, graph/optimization, dependency setup,
+and neighborhood-overlap/trustworthiness diagnostics. UMAP axes are not fixed
+neuron-weight vectors, and plotted angles or gaps are not linear variance explained
+or evidence of task/action factorization. Use it to explore local nonlinear structure.
+
+`embedding.pointInfo` and `pointLabels` identify every point; `neurons` identifies
+feature columns. `fn_plotNeuralEmbedding(embedding,embedPlotCfg)` recolors/replots
+without refitting. Save the first output alone to keep graphics separate.
 
 ## Tests
 
@@ -331,6 +458,8 @@ assertSuccess(results);
 results = runtests('organizer/object_organzier/tests');
 assertSuccess(results);
 results = runtests('analysis/taskActionGeometry/tests');
+assertSuccess(results);
+results = runtests('analysis/taskActionGeometryEmbedding/tests'); % Requires run_umap for integration tests.
 assertSuccess(results);
 ```
 

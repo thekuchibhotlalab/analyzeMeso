@@ -12,6 +12,8 @@ before=findall(groot,'Type','figure');
 r=fn_prepareNeuralData(c,S);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 verifyEmpty(t,fieldnames(r.plotFiles)); verifyTrue(t,r.neuralLoaded);
+verifyFalse(t,isfield(r,'figures'));
+verifyFalse(t,isfield(r.tracking,'figure'));
 end
 function testSaveHiddenAndObjectForwarding(t)
 [c,sessionInfo]=fixture();
@@ -24,22 +26,22 @@ folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
 file=fullfile(folder.Folder,'neural.mat'); save(file,'sessionInfo');
 ani=Animal(); ani.ID='fixture_AC'; ani.ops=struct('sessionInfoName',file);
 out=fullfile(folder.Folder,'plots'); before=findall(groot,'Type','figure');
-r=ani.fn_prepareNeuralData(c,'PlotSavePath',out);
+[r,figures]=ani.fn_prepareNeuralData(c,'PlotSavePath',out);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 verifyEqual(t,numel(fieldnames(r.plotFiles)),4);
 verifyTrue(t,isfield(r.plotFiles,'trackingCurve'));
 for name=fieldnames(r.plotFiles)'
     file=r.plotFiles.(name{1}); verifyTrue(t,isfile(file));
     info=imfinfo(file); verifyEqual(t,info.Format,'png');
-    verifyEmpty(t,r.figures.(name{1}));
+    verifyEmpty(t,figures.(name{1}));
 end
 end
 function testDisplayOnly(t)
-[c,S]=fixture(); r=fn_prepareNeuralData(c,S,'ShowPlots',true);
-cleanup=onCleanup(@()closeFigures(r)); %#ok<NASGU>
+[c,S]=fixture(); [r,figures]=fn_prepareNeuralData(c,S,'ShowPlots',true);
+cleanup=onCleanup(@()closeFigures(figures)); %#ok<NASGU>
 verifyEmpty(t,fieldnames(r.plotFiles));
 for name={'trialCounts','meanTC','sessionAmplitude'}
-    verifyEqual(t,char(r.figures.(name{1}).Visible),'on');
+    verifyEqual(t,char(figures.(name{1}).Visible),'on');
 end
 end
 function testDataPathFileOverridesAnimalSource(t)
@@ -77,11 +79,11 @@ verifyError(t,@()fn_prepareNeuralData(c,S,'DataPath', ...
 end
 function testDisplayAndSave(t)
 [c,S]=fixture(); folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
-r=fn_prepareNeuralData(c,S,'ShowPlots',true,'PlotSavePath',folder.Folder);
-cleanup=onCleanup(@()closeFigures(r)); %#ok<NASGU>
+[r,figures]=fn_prepareNeuralData(c,S,'ShowPlots',true,'PlotSavePath',folder.Folder);
+cleanup=onCleanup(@()closeFigures(figures)); %#ok<NASGU>
 for name=fieldnames(r.plotFiles)'
     verifyTrue(t,isfile(r.plotFiles.(name{1})));
-    verifyEqual(t,char(r.figures.(name{1}).Visible),'on');
+    verifyEqual(t,char(figures.(name{1}).Visible),'on');
 end
 end
 function testTrialPlotsIndependentOfNeuralPlots(t)
@@ -90,38 +92,64 @@ cfg=c.cfg; cfg.selectSessionsByTracking=true; cfg.minSessionsPerStage=1;
 S.offsetMap={zeros(2)}; S.ishere={true(3,1)};
 ani=Animal(); ani.ID='fixture_AC'; ani.trialInfo=T; ani.sessionInfoBeh=S;
 ani.ops=struct('sessionInfoName','unused-neural-file.mat');
-selected=ani.fn_prepareTrialData(cfg,'MakePlot',true);
-cleanup=onCleanup(@()closeTrialFigures(selected)); %#ok<NASGU>
-verifyFalse(t,selected.neuralLoaded);
-verifyEqual(t,char(selected.figures.tracking.Visible),'on');
-verifyEqual(t,char(selected.figures.rt.Visible),'on');
-verifyEqual(t,numel(findall(selected.figures.tracking,'Tag','TrialSelectionPrefix')),2);
-before=findall(groot,'Type','figure');
 folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
-r=fn_prepareNeuralData(selected,S,'PlotSavePath',folder.Folder);
+cfg.saveFile=fullfile(folder.Folder,'selected.mat');
+[selected,trialFigures]=ani.fn_prepareTrialData(cfg,'MakePlot',true);
+cleanup=onCleanup(@()closeTrialFigures(trialFigures)); %#ok<NASGU>
+verifyFalse(t,selected.neuralLoaded);
+verifyFalse(t,isfield(selected,'figures'));
+verifyFalse(t,isfield(selected.tracking,'figure'));
+saved=load(cfg.saveFile,'curated');
+verifyFalse(t,isfield(saved.curated,'figures'));
+verifyFalse(t,isfield(saved.curated.tracking,'figure'));
+reselected=fn_chooseTrackedSessions(selected,1);
+verifyEqual(t,reselected.tracking.numSessionsSelected,1);
+verifyEqual(t,char(trialFigures.tracking.Visible),'on');
+verifyEqual(t,char(trialFigures.rt.Visible),'on');
+verifyEqual(t,numel(findall(trialFigures.tracking,'Tag','TrialSelectionPrefix')),2);
+before=findall(groot,'Type','figure');
+[r,figures]=fn_prepareNeuralData(selected,S,'PlotSavePath',folder.Folder);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 verifyTrue(t,isfile(r.plotFiles.trackingCurve));
-verifyEqual(t,char(selected.figures.tracking.Visible),'on');
+verifyEqual(t,char(trialFigures.tracking.Visible),'on');
+verifyFalse(t,isfield(figures,'tracking'));
+verifyFalse(t,isfield(figures,'rt'));
+verifyFalse(t,isfield(r,'figures'));
+verifyFalse(t,isfield(r.tracking,'figure'));
 % A stale config must not override the function's default or explicit false.
 cfg.makePlots=true;
-quiet=fn_prepareTrialData(T,S,cfg);
-verifyEmpty(t,quiet.tracking.figure);
-quiet=ani.fn_prepareTrialData(cfg,'MakePlot',false);
-verifyEmpty(t,quiet.tracking.figure);
+[quiet,quietFigures]=fn_prepareTrialData(T,S,cfg);
+verifyFalse(t,isfield(quiet.tracking,'figure'));
+verifyEmpty(t,quietFigures.tracking); verifyEmpty(t,quietFigures.rt);
+[quiet,quietFigures]=ani.fn_prepareTrialData(cfg,'MakePlot',false);
+verifyFalse(t,isfield(quiet.tracking,'figure'));
+verifyEmpty(t,quietFigures.tracking); verifyEmpty(t,quietFigures.rt);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 end
-function closeTrialFigures(r)
+function testTrialSelectionWithNeuralLoad(t)
+[c,S,T]=fixture();
+cfg=c.cfg; cfg.loadNeural=true; cfg.sessionInfoFile='';
+[r,figures]=fn_prepareTrialData(T,S,cfg,'MakePlot',true);
+cleanup=onCleanup(@()closeTrialFigures(figures)); %#ok<NASGU>
+verifyTrue(t,r.neuralLoaded);
+verifyFalse(t,isfield(r,'figures'));
+verifyFalse(t,isfield(r.tracking,'figure'));
+verifyEqual(t,char(figures.rt.Visible),'on');
+verifyEmpty(t,figures.tracking);
+end
+function closeTrialFigures(figures)
 for name={'tracking','rt'}
-    fig=r.figures.(name{1}); if isgraphics(fig), close(fig); end
+    fig=figures.(name{1}); if isgraphics(fig), close(fig); end
 end
 end
-function closeFigures(r)
+function closeFigures(figures)
 for name={'trialCounts','meanTC','sessionAmplitude'}
-    fig=r.figures.(name{1}); if isgraphics(fig), close(fig); end
+    fig=figures.(name{1}); if isgraphics(fig), close(fig); end
 end
 end
 function [c,S,T]=fixture()
 cfg=fn_trialSelectionSettings(); cfg.verbose=false;
+cfg.useRTFilter=false;
 cfg.selectSessionsByTracking=false; cfg.runTrackedNeuronQC=false;
 cfg.sessionCountMethod='fixed'; cfg.numSessions=Inf; cfg.minTrials=1;
 cfg.animalID='fixture_AC'; cfg.alignedEventFrame=2;

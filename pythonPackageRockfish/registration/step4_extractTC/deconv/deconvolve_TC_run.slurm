@@ -10,14 +10,13 @@
 #SBATCH --time=24:00:00
 
 # Load any necessary modules or dependencies
-set -euo pipefail
 module load anaconda
 
 # Activate the virtual environment
 conda activate oasis 
 
 # Run your Python script
-python "${DECONV_SCRIPT:-deconvolve_TC.py}" "$@"
+python deconvolve_TC.py
 
 # Deactivate the virtual environment
 conda deactivate

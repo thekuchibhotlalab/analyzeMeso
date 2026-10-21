@@ -1,5 +1,7 @@
-function curated = fn_prepareTrialData(trialInfo,sessionInfoBeh,cfg,varargin)
+function [curated,figures] = fn_prepareTrialData(trialInfo,sessionInfoBeh,cfg,varargin)
 %FN_PREPARETRIALDATA Select trials and sessions using lightweight metadata.
+% First output contains data/configuration only; second output holds figures.
+% figures.tracking and figures.rt are empty when their plots are not created.
 % Inputs are tables or *_trialInfo.mat and *_sessionInfoBeh.mat filenames.
 % Default: no parsedTrial.mat load. Inspect tracking.curve, then use
 % fn_chooseTrackedSessions and fn_prepareNeuralData when ready for neural activity.
@@ -54,9 +56,12 @@ curated.qc=table(); % Neural QC is available only after extraction.
 curated.sessionAudit=table();
 curated.droppedTrialReport=table();
 curated.trackedNeuronQC=struct();
-curated.figures=struct();
-if isfield(tracking,'figure'), curated.figures.tracking=tracking.figure; end
 curated=fn_chooseTrackedSessions(curated);
+figures=struct('tracking',[],'rt',[]);
+if isfield(curated.tracking,'figure')
+    figures.tracking=curated.tracking.figure;
+    curated.tracking=rmfield(curated.tracking,'figure');
+end
 if cfg.verbose
     decision=curated.tracking.sessionCountSelection;
     if decision.method~="fixed"
@@ -68,7 +73,7 @@ if cfg.verbose
     disp(curated.selectionQC);
 end
 if makePlot
-    curated.figures.rt=fn_plotRTQC(curated.selection,cfg);
+    figures.rt=fn_plotRTQC(curated.selection,cfg);
 end
 if cfg.loadNeural
     source=cfg.sessionInfoFile;

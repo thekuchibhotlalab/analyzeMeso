@@ -1,5 +1,8 @@
-function curated = fn_prepareNeuralData(curated,sessionInfoFile,varargin)
+function [curated,figures] = fn_prepareNeuralData(curated,sessionInfoFile,varargin)
 %FN_PREPARENEURALDATA Load neural activity only after trials/sessions are chosen.
+% First output contains data/configuration only; second output holds figures.
+% Figures inherited from trial selection are also moved to the second output.
+% Existing figures remain open. Hidden PNG-only figures are closed and return [].
 % Accepts a parsedTrial.mat path or an already-loaded sessionInfo table.
 % All neuron rows are retained; tracking.selectedNeuronIDs gives common cells.
 % 'DataPath','': override the neural source with a MAT file or containing folder.
@@ -23,6 +26,15 @@ parse(p,varargin{:});
 showPlots=p.Results.ShowPlots;
 plotSavePath=char(p.Results.PlotSavePath);
 assert(~curated.neuralLoaded,'trialCuration:AlreadyLoaded','Neural activity is already loaded.');
+figures=struct();
+if isfield(curated,'figures')
+    figures=curated.figures;
+    curated=rmfield(curated,'figures');
+end
+if isfield(curated.tracking,'figure')
+    figures.tracking=curated.tracking.figure;
+    curated.tracking=rmfield(curated.tracking,'figure');
+end
 sessionInfoFile=fn_resolveNeuralSource(sessionInfoFile,p.Results.DataPath,curated);
 sessionInfo=fn_loadTrialTable(sessionInfoFile,'sessionInfo');
 curated.neuralSourceFile=''; % Empty for an already-loaded table.
@@ -66,10 +78,10 @@ if showPlots || ~isempty(plotSavePath)
             curated.plotFiles.(names{k})=file;
         end
         if showPlots
-            curated.figures.(names{k})=fig;
+            figures.(names{k})=fig;
         else
             clear cleanup % Close only the hidden figure created by this step.
-            curated.figures.(names{k})=[];
+            figures.(names{k})=[];
         end
     end
 end

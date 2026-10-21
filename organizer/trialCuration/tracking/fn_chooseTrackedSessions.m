@@ -31,7 +31,7 @@ if hasTracking
     if n>0, tracking.selectedNeuronMask=tracking.trackedNeurons(:,n); end
     tracking.selectedNeuronIDs=find(tracking.selectedNeuronMask);
     tracking.selectedMinimumMet=tracking.minimumMet && n>=tracking.minimumPrefixLength;
-    if ~isempty(tracking.figure)&&isgraphics(tracking.figure)
+    if isfield(tracking,'figure') && ~isempty(tracking.figure)&&isgraphics(tracking.figure)
         delete(findall(tracking.figure,'Tag','TrialSelectionPrefix'));
         axesList=findall(tracking.figure,'Type','axes');
         for ax=reshape(axesList,1,[])

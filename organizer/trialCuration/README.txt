@@ -372,7 +372,19 @@ neuralCurated.sessionExcludedTrials. Neural counts and fn_trackedNeuronQC reflec
 sessions actually extracted, which can be fewer than the metadata prediction.
 
 Neural outputs retain neuralSelection, byCondition, qc, sessionAudit,
-droppedTrialReport, fn_trackedNeuronQC, and optional neural QC figures. Metadata
+droppedTrialReport, and trackedNeuronQC. Figure handles are a separate output:
+  [neuralCurated, figures] = ani.fn_prepareNeuralData(curated,'ShowPlots',true);
+The standalone fn_prepareNeuralData has the same two outputs. Trial selection
+also returns figures separately (both standalone and Animal method):
+  [curated, trialFigures] = ani.fn_prepareTrialData(cfg,'MakePlot',true);
+trialFigures.tracking and trialFigures.rt hold the plots, or [] when not made.
+MakePlot still defaults to false. curated and its cfg.saveFile contain no figure
+handles. Choosing a new prefix with fn_chooseTrackedSessions still works on
+curated, but does not update the separately returned figures automatically.
+For older inputs, fn_prepareNeuralData moves embedded trial-selection figures
+into its second output, without closing them or modifying the input. PNG paths remain in
+neuralCurated.plotFiles. Saving neuralCurated excludes these figure handles.
+Single-output calls still work; ShowPlots defaults to false. Metadata
 results leave those neural outputs empty and provide selectionQC instead.
 Custom cfg.normalizationFcn behavior is unchanged. Outputs can feed any analysis;
 this package handles selection, extraction, normalization, and QC only.

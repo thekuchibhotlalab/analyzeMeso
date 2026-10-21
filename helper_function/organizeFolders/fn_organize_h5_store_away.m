@@ -1,5 +1,5 @@
 % Find imagingSession folder under current directory
-rootPath = 'G:\rockfish\ziyi\zz180_AC';
+rootPath = 'G:\rockfish\ziyi\zz177_AC';
 imagingPath = fullfile(rootPath, 'imagingSession');
 
 if ~exist(imagingPath, 'dir')
