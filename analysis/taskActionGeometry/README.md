@@ -150,19 +150,72 @@ $$
 These quantities are calculated **at each time point**. Shared temporal changes
 are not included as a competing explanatory factor.
 
+The time courses show **total projected variance divided by total population
+variance at each time**, including condition differences and trial variability. Let
+
+$$
+V_{\rm population}(t)=\sum_n\left[
+\frac1C\sum_c(\mu_{nc}(t)-\bar\mu_n(t))^2+
+\frac1C\sum_c\operatorname{Var}_{r}(x_{nctr})\right].
+$$
+
+For axis $k$, the time course plots $V_{total,k}(t)/V_{population}(t)$.
+The left summary uses a population denominator pooled across **conditions,
+trials, and time**, about one grand mean. Define
+
+$$
+M_k=\operatorname{Var}_{c,t}(z_{kc}(t)),\qquad
+M_{pop}=\sum_n\operatorname{Var}_{c,t}(\mu_{nc}(t)).
+$$
+
+The left summary plots a separate bar for each variable on each axis:
+$\operatorname{Mean}_t E_{kf}(t)/
+[M_{pop}+\operatorname{Mean}_t V_{noise,pop}(t)]$,
+where $E_{kf}$ is unique variable-related variance from the joint main-effect
+regression (defined below). The numerator captures time-varying action/task
+separation; it excludes trial noise and temporal changes shared across conditions.
+The denominator includes shared temporal dynamics, condition differences, and
+trial variability throughout the pooled population.
+The adjacent condition-mean summary in the same `variance` figure first averages all trials within each
+condition, then plots $M_k/M_{pop}$ across conditions and time. It includes
+temporal dynamics and condition differences, but excludes within-condition trial
+variability. Both use equal condition/time weights, regardless of trial counts;
+individual trials receive equal weight within each animal-condition. Animals'
+trials are not paired; projected residual variances add across animals.
+The left panel has grouped variable bars. The condition-mean panel has one total
+variance bar per axis; the time courses also retain total projected variance.
+An axis named `action 1` can capture variance from other sources, including task.
+Values are fractions (0.01 means 1%). All quantities use the analyzed, optionally
+normalized neuron coordinates. Different variable bases can overlap, so do not
+add fractions across action and task axis sets.
+
+Variable-specific metrics remain available in the result. For variable $f$ on
+axis $k$, its unique projected variance is
+$E_{kf}(t)=(SSE_{reduced}-SSE_{full})/C$ from the joint main-effect model.
+For a balanced binary action comparison, this equals
+$[u_k^\top(\mu_L(t)-\mu_R(t))]^2/4$.
+
 | Metric / result field | Definition and interpretation |
 | --- | --- |
-| `variance.variableUniqueFractionByTime` | Main-effect regression on condition means at each time: $(SSE_{reduced}-SSE_{full})/(C V_{total})$. Reduced model removes only the target variable. Unique explained **total variance**, not partial eta-squared. Unidentifiable effects are NaN. This is what the task/action variance panels plot. |
+| `variance.variableUniquePooledPopulationFraction` | Mean unique variable variance on each axis / total population variance pooled over conditions, trials and time. Grouped bars in the left summary. |
+| `variance.pooledAllTrialsFraction` | Total projected variance / population total, pooling conditions, time and trials about one grand mean. Retained in the output. |
+| `variance.pooledTrialMeanFraction` | Projected variance / population total of condition-mean PSTHs pooled across conditions and time. Right summary in `variance`. |
+| `variance.pooledAllTrialsProjectedVariance`, `pooledAllTrialsPopulationVariance` | Numerator (per axis) and denominator (scalar) of the all-trial pooled fraction. Corresponding `pooledTrialMean...` fields hold the trial-averaged quantities. |
+| `variance.variableUniquePopulationFractionByTime` | $E_{kf}/V_{population}$; retained as a variable-specific metric, not plotted in the total-variance panels. Unidentifiable effects are NaN. |
+| `variance.variableUniqueEnergyByTime` | $E_{kf}$, unique projected main-effect variance in squared activity units. |
+| `variance.allConditionPopulationFractionByTime` | $V_{signal}/V_{population}$, including interactions and other condition differences; retained in the result. |
+| `variance.populationTotalVarianceByTime` | Sum across neurons of between-condition and within-condition variance at each time point. |
+| `variance.variableUniqueFractionByTime` | Original within-axis metric, retained for comparison: $E_{kf}/V_{total}$, where $V_{total}$ is variance on that axis. Not partial eta-squared; no longer used in the task/action panels. |
 | `variance.variableMarginalFractionByTime` | Variance of factor-level predicted means divided by total variance. Can overlap for unbalanced/confounded designs; not the default variance panel. |
-| `variance.allConditionFractionByTime` | $V_{signal}/V_{total}$: dashed “All conditions” curve. Includes interactions and other condition differences not assigned to unique main effects. |
+| `variance.allConditionFractionByTime` | Original within-axis all-condition fraction $V_{signal}/V_{total}$, retained for comparison. |
 | `variance.conditionContributionByTime` | $(z_c-\bar z)^2/(C V_{total})$ for each condition. Sums to the all-condition fraction. A condition far from the grand mean contributes more, regardless of which variable caused the difference. |
 | `variance.conditionTotalVarianceByTime` | $v_c+(z_c-\bar z)^2$, in squared activity units; includes within-condition variation. |
 | `factors(f).separationCaptureByTime` | Between-level energy along this factor axis divided by that factor's between-level energy across all neurons. Assesses the fixed axis on the time-resolved level means. |
 | `factors(f).cumulativeSeparationCapture` | Cumulative capture over that factor's orthogonal axes; at most 1 apart from round-off. |
-| `variance.axisFractionOfPopulationTotalByTime` | Total projected variance divided by trace of the full neuron-space total covariance. Do not sum across overlapping variable bases. |
+| `variance.axisFractionOfPopulationTotalByTime` | Total projected variance divided by trace of the full neuron-space total covariance; plotted in the per-axis time courses. The field without `ByTime` retains the old ratio of time-averaged variances, not the new pooled-time summary. Do not sum across overlapping variable bases. |
 | `axisInfo.fitObjective` | In-sample axis-fitting objective. Not cross-validated accuracy and not comparable across methods. |
 
-Summary fractions (fields without `ByTime`) are **mean numerator / mean denominator**,
+For time-resolved metrics, summary fractions (fields without `ByTime`) are **mean numerator / mean denominator**,
 not the mean of pointwise fractions. Zero denominators produce NaN. Interaction
 variance is not assigned to individual main effects. All estimates are descriptive,
 with no finite-sample noise correction, bootstrap CI, or held-out validation.
@@ -171,7 +224,9 @@ For separation capture, let $\delta_l(t)$ be a factor level's neuron-space mean
 minus the equal-level mean. Axis $u_k$ captures
 $\sum_l[u_k^\top\delta_l(t)]^2/\sum_l\|\delta_l(t)\|^2$.
 This denominator is **between-level separation energy**, different from the
-total trial variance denominator used in the task/action explained-variance plots.
+full population total variance denominator used in the axis variance-captured plots.
+Previously saved geometry results can be replotted with the new population
+denominator using `fn_plotNeuralGeometry`; no neural-data reload or axis refit is needed.
 
 ## Similarity and plots
 
@@ -190,14 +245,39 @@ correlations. Similarity is measured in the analyzed, optionally normalized coor
 | Figure | Panels |
 | --- | --- |
 | `activity` | Per-condition neuron PSTHs with one shared peak-time ordering and color scale; mean population traces marginalized by variable, with SEM across neuron-wise trial means. |
-| `projections` | Marginalized traces and optional `trialTypes` condition traces on each axis. |
-| `variance` | Unique variable variance, weight similarity, time-resolved variance and separation capture. Condition-contribution heatmap/time courses are optional (`showConditionContribution=false` by default). |
+| `projections` | Marginalized traces and optional `trialTypes` condition traces on each axis, with trial-based SEM shading by default. `projectionError='sd'` shows trial spread; `'none'` hides bands. |
+| `variance` | Adjacent variable-separation / pooled population total and condition-mean total variance summaries, per-time variance capture, weight similarity, and separation capture. Condition-contribution heatmap/time courses are optional (`showConditionContribution=false` by default). |
 | `trajectories` | With `trajectory='both'`: separate action/task 3D views, all within-variable 2D pairs among axes 1–3, then same-rank action/task pairs. Extra variables extend the layout. Missing axes skip unavailable panels. |
 
 `trajectoryAxes=[]` uses the factor-based layout; an explicit three-index vector
 overrides it with one custom triplet. These projections may use nonorthogonal
 cross-variable axes and need not preserve distances. Population SEM is descriptive
 across neurons, **not** an animal-level confidence interval.
+
+Projection uncertainty is separate from the neuron-wise SEM in the activity
+sanity plots. Set `plotCfg.projectionError='sem'` (default), `'sd'`, or `'none'`.
+For animal $a$, condition $c$, and fixed axis $k$, project the actual trials
+using that animal's weight block, and calculate sample variance $s^2_{ack}(t)$.
+With $R_{ac}$ trials, the pooled mean's SEM is
+
+$$
+SEM_{ck}(t)=\sqrt{\sum_a s^2_{ack}(t)/R_{ac}}.
+$$
+
+For a marginal trace averaging $m$ conditions equally, its SEM is
+$\sqrt{\sum_c SEM_{ck}(t)^2}/m$. This uses independent trial/animal
+contributions, without pairing trials across animals or using neuron count as
+sample size. SEM estimates uncertainty of the mean; it is not individual-trial
+spread. SD uses $\sqrt{\sum_a s^2_{ack}}$ per condition; a marginal SD also
+includes between-condition mean differences, as a balanced mixture of trials.
+Bands are +/-1 SEM or SD, not confidence intervals. They assume independent
+trials and treat fitted axes as fixed: session dependence, axis-fit uncertainty,
+and between-animal generalization are not estimated. These are descriptive
+in-sample summaries, not a significance test of learning-phase differences.
+`projection.conditionSEM` and `projection.conditionSD` store axis x time x
+condition arrays. Older saved results lack per-animal variance contributions;
+rerun `fn_analyzeNeuralGeometry` once to obtain SEM. Plotting an older result
+without the requested uncertainty field emits a warning and shows mean traces.
 
 ```matlab
 plotCfg.visible=false; plotCfg.savePath='B:\analysis\neuralGeometry';

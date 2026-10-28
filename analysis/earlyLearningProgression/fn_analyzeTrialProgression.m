@@ -1,18 +1,28 @@
-function [result,figures] = fn_analyzeTrialProgression(activity,conditions,cfg,plotCfg)
+function [result,figures] = fn_analyzeTrialProgression(activity,conditions,cfg,plotCfg,trialInfo)
 %FN_ANALYZETRIALPROGRESSION Early trials and condition-specific subpopulations.
 % activity: condition x animal cells, each neuron x time x chronological trial.
-% conditions: one row per cell row (e.g. conditionName and stimulus).
+% conditions: a table, selectionCfg.conditionDef, or full selectionCfg.
+% Condition order must match activity rows; empty cells are skipped per row.
+% For cfg.groupBy='outcome' or 'phaseOutcome', pass trialInfoNeural cells as input 5.
 % Neurons pool across animals; trial r means the r-th occurrence within each
-% condition/animal, NOT a simultaneous trial. No normalization or reordering.
+% condition/animal, NOT a simultaneous trial. Normalization is optional and
+% uses one scale per neuron across all input conditions/trials in timeWindow.
+% Phase/outcome mode restores trial order from sourceTrialRow before analysis.
 [defaults,plotDefaults]=fn_trialProgressionConfig();
 if nargin<3, cfg=struct(); end
 if nargin<4, plotCfg=struct(); end
+if nargin<5, trialInfo=[]; end
 cfg=options(cfg,defaults); plotCfg=options(plotCfg,plotDefaults);
+cfg.groupBy=validatestring(cfg.groupBy,{'condition','phaseOutcome','outcome'});
+cfg.normalization=validatestring(cfg.normalization,{'none','zscore','rms'});
 cfg.selectionMethod=validatestring(cfg.selectionMethod,{'variance','progression'});
 cfg.progressionDirection=validatestring(cfg.progressionDirection,{'positive','negative','both'});
 cfg.comparisonReference=validatestring(cfg.comparisonReference,{'all','progression'});
-validateattributes(cfg.nProgressionTrials,{'numeric'},{'scalar','integer','>=',2,'finite'});
+validateattributes(cfg.nProgressionTrials,{'numeric'},{'scalar','real','>=',2});
+assert(isinf(cfg.nProgressionTrials)||fix(cfg.nProgressionTrials)==cfg.nProgressionTrials, ...
+    'trialProgression:Trials','nProgressionTrials must be an integer or Inf.');
 validateattributes(cfg.nEndTrials,{'numeric'},{'scalar','integer','positive','finite'});
+validateattributes(cfg.nStimulusBins,{'numeric'},{'scalar','integer','nonnegative','finite'});
 validateattributes(cfg.selectedFraction,{'numeric'},{'scalar','positive','<=',1,'finite'});
 for field={'psthTrials','startTrials'}
     validateattributes(cfg.(field{1}),{'numeric'},{'vector','nonempty','integer','positive','finite'});
@@ -29,8 +39,18 @@ end
 assert(iscell(activity)&&ismatrix(activity)&&~isempty(activity),'trialProgression:Input', ...
     'Use a condition x animal cell array.');
 [nc,na]=size(activity);
+% Use the selection preset's exact labels and metadata, including probes.
+if isstruct(conditions)&&isscalar(conditions)&&isfield(conditions,'conditionDef')
+    conditions=conditions.conditionDef;
+end
+if isstruct(conditions)
+    assert(~isempty(conditions)&&isvector(conditions)&&isfield(conditions,'name'), ...
+        'trialProgression:Conditions','Provide a conditionDef struct array with a name per condition.');
+    conditions=struct2table(conditions(:),'AsArray',true);
+    conditions=renamevars(conditions,'name','conditionName');
+end
 assert(istable(conditions)&&height(conditions)==nc&&width(conditions)>0,'trialProgression:Conditions', ...
-    'Provide a condition table with one row per input condition.');
+    'Provide one condition definition per activity row (%d rows).',nc);
 if ~ismember('conditionName',conditions.Properties.VariableNames)
     % A stimulus-only table is enough; do not infer scientific labels from names.
     names=strings(nc,1);
@@ -41,6 +61,11 @@ if ~ismember('conditionName',conditions.Properties.VariableNames)
         names=names+string(conditions.Properties.VariableNames{j})+"="+values;
     end
     conditions.conditionName=names;
+end
+sourceConditions=conditions; sourceActivity=activity; trialMap={};
+if ismember(cfg.groupBy,{'phaseOutcome','outcome'})
+    [activity,conditions,trialMap]=fn_groupTrialProgression(activity,conditions,trialInfo,cfg.groupBy,cfg.phaseOrder);
+    nc=size(activity,1);
 end
 names=string(conditions.conditionName);
 assert(iscolumn(names)&&numel(unique(names))==nc&&all(~ismissing(names)&strlength(names)>0), ...
@@ -72,15 +97,31 @@ else
     assert(numel(time)==nt&&all(isfinite(time))&&all(diff(time)>0), ...
         'trialProgression:Time','time must be finite, increasing, and match time bins.');
 end
-scoreBins=1:nt;
+% Select bins once, retaining original frame indices and event-relative times.
+timeBins=1:nt;
+if ~isempty(cfg.timeWindow)
+    validateattributes(cfg.timeWindow,{'numeric'},{'vector','numel',2,'real','finite'});
+    assert(cfg.timeWindow(1)<=cfg.timeWindow(2),'trialProgression:Time','Invalid timeWindow.');
+    timeBins=find(time>=cfg.timeWindow(1)&time<=cfg.timeWindow(2));
+end
+assert(~isempty(timeBins),'trialProgression:Time','No bins in timeWindow.');
+time=time(timeBins);
+scoreBins=1:numel(time);
 if ~isempty(cfg.scoreTimeWindow)
     validateattributes(cfg.scoreTimeWindow,{'numeric'},{'vector','numel',2,'real','finite'});
     assert(cfg.scoreTimeWindow(1)<=cfg.scoreTimeWindow(2),'trialProgression:Time','Invalid scoreTimeWindow.');
     scoreBins=find(time>=cfg.scoreTimeWindow(1)&time<=cfg.scoreTimeWindow(2));
 end
-assert(~isempty(scoreBins),'trialProgression:Time','No bins in scoreTimeWindow.');
+assert(~isempty(scoreBins),'trialProgression:Time','No retained bins in scoreTimeWindow.');
 result=struct('cfg',cfg,'conditions',conditions,'time',time,'scoreBins',scoreBins, ...
     'trialCounts',counts,'byCondition',[]);
+result.sourceConditions=sourceConditions; result.trialMap=trialMap;
+result.inputTimeBins=timeBins; % Original activity-column indices of result.time.
+result.normalization=normalizationInfo(sourceActivity,nNeurons,labels,timeBins,cfg.normalization);
+result.stimulusBins=[];
+if cfg.nStimulusBins>0&&~isempty(trialInfo)
+    result.stimulusBins=fn_binStimulusProgression(sourceActivity,sourceConditions,trialInfo,cfg,timeBins,labels,result.normalization);
+end
 for c=1:nc
     available=counts(c,:)>=2;
     R=0; if any(available), R=min(cfg.nProgressionTrials,min(counts(c,available))); end
@@ -103,7 +144,11 @@ for c=1:nc
             'No valid comparison trials for condition %s, animal %s.',names(c),labels(a));
         overlapping(a)=~isempty(intersect(starts{a},ends{a}));
         used=unique([1:R starts{a} ends{a}]);
-        A=activity{c,a}; valid=all(reshape(isfinite(A(:,:,used)),size(A,1),[]),2);
+        A=activity{c,a}(:,timeBins,:);
+        if ~strcmp(cfg.normalization,'none')
+            A=(double(A)-result.normalization.offset{a})./result.normalization.scale{a};
+        end
+        valid=all(reshape(isfinite(A(:,:,used)),size(A,1),[]),2);
         assert(cfg.dropNonfiniteNeurons||all(valid),'trialProgression:Nonfinite','Nonfinite activity in analyzed trials.');
         dropped(a)=sum(~valid);
         if ~any(valid), reasons(a)="no finite neurons in analyzed trials"; continue; end
@@ -119,6 +164,11 @@ for c=1:nc
     one.animalAudit=table((1:na)',labels,counts(c,:)',included,dropped,starts,ends,overlapping,reasons, ...
         'VariableNames',{'animalIndex','animalLabel','nTrials','included','nDroppedNeurons', ...
         'startTrials','endTrials','comparisonOverlap','reason'});
+    one.byAnimal=repmat(struct('animalIndex',0,'animalLabel',"", ...
+        'allPopulation',[],'selectedPopulation',[],'status',"no usable neurons"),na,1);
+    for a=1:na
+        one.byAnimal(a).animalIndex=a; one.byAnimal(a).animalLabel=labels(a);
+    end
     if any(included)
         E=cat(1,early{included}); D=cat(1,display{included}); F=cat(1,first{included}); L=cat(1,last{included});
         neurons=vertcat(maps{included}); nn=size(E,1);
@@ -145,12 +195,21 @@ for c=1:nc
         one.neurons=neurons; one.selectedNeuronMask=mask;
         one.allPopulation=summarize(E,D,F,L,scoreBins);
         one.selectedPopulation=summarize(E(mask,:,:),D(mask,:,:),F(mask,:),L(mask,:),scoreBins);
+        for a=find(included)'
+            % Show the animal's contribution to the same pooled analysis;
+            % retain the common trial range and the existing selected-neuron mask.
+            localMask=mask(neurons.animalIndex==a);
+            one.byAnimal(a).allPopulation=summarize(early{a},display{a},first{a},last{a},scoreBins);
+            one.byAnimal(a).selectedPopulation=summarize(early{a}(localMask,:,:), ...
+                display{a}(localMask,:,:),first{a}(localMask,:),last{a}(localMask,:),scoreBins);
+            one.byAnimal(a).status="computed";
+        end
         one.status="computed";
         if cfg.verbose
             fprintf('%s: first %d trials; %d pooled neurons, %d selected (%s).\n',names(c),R,nn,sum(mask),cfg.selectionMethod);
         end
     end
-    if R>0&&R<cfg.nProgressionTrials
+    if R>0&&isfinite(cfg.nProgressionTrials)&&R<cfg.nProgressionTrials
         warning('trialProgression:Short','%s: using first %d common trials instead of %d.',names(c),R,cfg.nProgressionTrials);
     end
     if any(overlapping&included)
@@ -165,11 +224,13 @@ end
 function s=summarize(E,D,F,L,bins)
 nn=size(E,1); nt=size(E,2); nr=size(E,3);
 s=struct('nNeurons',nn,'trialPsth',nan(nt,nr),'trialPsthSEM',nan(nt,nr), ...
+    'meanPsth',nan(nt,1),'meanSEM',nan(nt,1), ...
     'displayPsth',nan(nt,size(D,3)),'displayPsthSEM',nan(nt,size(D,3)), ...
     'startPsth',nan(nt,1),'endPsth',nan(nt,1),'startSEM',nan(nt,1),'endSEM',nan(nt,1), ...
     'progression',nan(1,nr),'progressionSEM',nan(1,nr));
 if nn==0, return; end
 s.trialPsth=reshape(mean(E,1),nt,nr); s.trialPsthSEM=reshape(std(E,0,1)/sqrt(nn),nt,nr);
+trialMean=mean(E,3); s.meanPsth=mean(trialMean,1)'; s.meanSEM=std(trialMean,0,1)'/sqrt(nn);
 s.displayPsth=reshape(mean(D,1),nt,[]); s.displayPsthSEM=reshape(std(D,0,1)/sqrt(nn),nt,[]);
 s.startPsth=mean(F,1)'; s.endPsth=mean(L,1)';
 s.startSEM=std(F,0,1)'/sqrt(nn); s.endSEM=std(L,0,1)'/sqrt(nn);
@@ -178,6 +239,45 @@ s.progression=mean(windowMeans,1); s.progressionSEM=std(windowMeans,0,1)/sqrt(nn
 if nn==1
     s.trialPsthSEM(:)=NaN; s.displayPsthSEM(:)=NaN; s.startSEM(:)=NaN;
     s.endSEM(:)=NaN; s.progressionSEM(:)=NaN;
+    s.meanSEM(:)=NaN;
+end
+end
+
+function info=normalizationInfo(activity,nNeurons,labels,bins,method)
+% Fit once per animal/neuron, weighting every finite time x trial sample equally.
+% Two passes avoid subtracting large raw second moments for zscore variance.
+na=size(activity,2);
+info=struct('method',method,'animalLabels',labels,'inputTimeBins',bins, ...
+    'scope','All supplied conditions and trials within timeWindow; finite samples only.');
+info.offset=cell(1,na); info.scale=cell(1,na); info.nSamples=cell(1,na); info.degenerate=cell(1,na);
+for a=1:na
+    nn=nNeurons(a); if isnan(nn), nn=0; end
+    info.offset{a}=zeros(nn,1); info.scale{a}=ones(nn,1); info.degenerate{a}=false(nn,1);
+    if strcmp(method,'none')||nn==0, continue; end
+    counts=zeros(nn,1); total=zeros(nn,1);
+    for c=1:size(activity,1)
+        if isempty(activity{c,a}), continue; end
+        X=reshape(double(activity{c,a}(:,bins,:)),nn,[]);
+        finite=isfinite(X); counts=counts+sum(finite,2); X(~finite)=0;
+        total=total+sum(X,2);
+    end
+    offset=zeros(nn,1);
+    if strcmp(method,'zscore'), offset=total./max(counts,1); end
+    energy=zeros(nn,1);
+    for c=1:size(activity,1)
+        if isempty(activity{c,a}), continue; end
+        X=reshape(double(activity{c,a}(:,bins,:)),nn,[]);
+        finite=isfinite(X); X=X-offset; X(~finite)=0;
+        energy=energy+sum(X.^2,2);
+    end
+    denominator=counts;
+    if strcmp(method,'zscore'), denominator=counts-1; end % MATLAB sample std convention.
+    scale=sqrt(energy./max(denominator,1));
+    assert(all(isfinite(offset)&isfinite(scale)),'trialProgression:Normalization', ...
+        'Normalization statistics overflowed for animal %s.',labels(a));
+    degenerate=denominator<=0|scale==0; scale(degenerate)=1;
+    info.offset{a}=offset; info.scale{a}=scale;
+    info.nSamples{a}=counts; info.degenerate{a}=degenerate;
 end
 end
 

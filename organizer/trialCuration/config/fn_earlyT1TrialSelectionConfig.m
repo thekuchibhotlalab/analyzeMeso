@@ -16,13 +16,24 @@ cfg.conditionDef = [ ...
     fn_trialCondition("T1M_S2_R",       "T1M", [], 2, 2, 1);
     fn_trialCondition("T1M_S1_L_probe", "T1M", [], 1, 1, 2);
     fn_trialCondition("T1M_S2_R_probe", "T1M", [], 2, 2, 2)];
-cfg.RTRange=[0.35 0.65];
-cfg.trackingMethod='greedy';
-cfg.minSessionsPerStage=3;
-cfg.requireCorrect=false; % Preserve errors and responseType=2 probes.
+cfg.neuralField = 'dffChoice';
 
-cfg.sessionCountMethod='fixed'; % 'auto', 'manual', or 'fixed' with cfg.numSessions.
-cfg.autoSessionRange=[0.30 1.00];
+% RT filtering can be disabled for raw-data curation.
+cfg.minTrials = 10;
+cfg.useRTFilter = true;
+cfg.RTRange = [0.2 0.65];
+
+% Shared trial/session options; edit these per preset as needed.
+cfg.trackingMethod='lookahead'; % Or 'error' or 'greedy'.
+cfg.minSessionsPerStage=4;
+cfg.matchRemaining = false;    % Continue phase rounds after the minimum quotas.
+cfg.lookaheadWeight = 0.75;
+cfg.lookaheadSessions = 5;
+
+% Final prefix size (independent of the session ranking method).
+cfg.sessionCountMethod='auto'; % 'auto', 'manual', or 'fixed' with cfg.numSessions.
+cfg.autoSessionRange=[0.8 1.0]; % percentage of sessions to include in neural tracking 
 cfg.autoSessionSmoothWindow=5;
-cfg.manualSessionCounts=struct('zz153_PPC',[]); % Fill in the experimenter's count.
+cfg.manualSessionCounts=struct(); % e.g. cfg.manualSessionCounts.zz153_AC=40;
+
 end

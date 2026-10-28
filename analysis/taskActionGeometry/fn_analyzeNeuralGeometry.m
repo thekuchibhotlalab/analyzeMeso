@@ -110,16 +110,23 @@ result.axisInfo=table(axisVariable,axisNumber,objective, ...
 result.axisLabels=axisVariable+" "+string(axisNumber);
 K=size(W,2);
 P=reshape(W'*reshape(C,n,[]),K,nt,nc); V=zeros(K,nt,nc); populationNoise=zeros(nt,nc);
+projectionMeanVariance=zeros(K,nt,nc); projectionTrialVariance=zeros(K,nt,nc);
 % Sum independent animal contributions, preserving each animal's true trials.
 for a=1:na
     ix=indices{a}; if isempty(ix), continue; end
     for c=1:nc
         Y=reshape(W(ix,:)'*reshape(X{c,a},numel(ix),[]),K,nt,counts(c,a));
         V(:,:,c)=V(:,:,c)+var(Y,1,3);
+        % Use actual within-animal trials; do not pair trials across animals.
+        sampleVariance=var(Y,0,3);
+        projectionMeanVariance(:,:,c)=projectionMeanVariance(:,:,c)+sampleVariance/counts(c,a);
+        projectionTrialVariance(:,:,c)=projectionTrialVariance(:,:,c)+sampleVariance;
         populationNoise(:,c)=populationNoise(:,c)+sum(var(X{c,a},1,3),1)';
     end
 end
-result.projection=struct('conditionMean',P,'withinConditionVariance',V);
+result.projection=struct('conditionMean',P,'withinConditionVariance',V, ...
+    'conditionSEM',sqrt(projectionMeanVariance),'conditionSD',sqrt(projectionTrialVariance), ...
+    'errorEstimation','Fixed-axis trial uncertainty; independent trials/animals assumed; no axis-fit or animal-level uncertainty.');
 result.variance=varianceMetrics(P,V,C,design,columns,groups,nf);
 result.variance.populationTotalVarianceByTime= ...
     result.variance.populationBetweenConditionVarianceByTime+mean(populationNoise,2)';
@@ -127,6 +134,31 @@ result.variance.axisFractionOfPopulationTotalByTime=safeDivide( ...
     result.variance.totalByTime,result.variance.populationTotalVarianceByTime);
 result.variance.axisFractionOfPopulationTotal=safeDivide( ...
     result.variance.total,mean(result.variance.populationTotalVarianceByTime));
+% Pool condition x time about ONE grand mean, retaining shared time dynamics.
+% Conditions remain equally weighted even when their trial counts differ.
+trialMeanProjected=var(reshape(P,K,nt*nc),1,2);
+trialMeanPopulation=sum(var(reshape(C,n,nt*nc),1,2));
+allTrialsProjected=trialMeanProjected+mean(V,[2 3]);
+allTrialsPopulation=trialMeanPopulation+mean(populationNoise,'all');
+result.variance.pooledTrialMeanProjectedVariance=trialMeanProjected;
+result.variance.pooledTrialMeanPopulationVariance=trialMeanPopulation;
+result.variance.pooledTrialMeanFraction=safeDivide(trialMeanProjected,trialMeanPopulation);
+result.variance.pooledAllTrialsProjectedVariance=allTrialsProjected;
+result.variance.pooledAllTrialsPopulationVariance=allTrialsPopulation;
+result.variance.pooledAllTrialsFraction=safeDivide(allTrialsProjected,allTrialsPopulation);
+result.variance.variableUniquePooledPopulationFraction=safeDivide( ...
+    reshape(mean(result.variance.variableUniqueEnergyByTime,2),K,nf),allTrialsPopulation);
+result.variance.pooledWeighting='Equal conditions and time bins; equal trials within each animal-condition; unpaired animal residuals.';
+% Variable signal on each axis, relative to ALL pooled neurons' variance.
+populationTotal=result.variance.populationTotalVarianceByTime;
+result.variance.variableUniquePopulationFractionByTime=safeDivide( ...
+    result.variance.variableUniqueEnergyByTime,populationTotal);
+result.variance.variableUniquePopulationFraction=safeDivide( ...
+    reshape(mean(result.variance.variableUniqueEnergyByTime,2),K,nf),mean(populationTotal));
+result.variance.allConditionPopulationFractionByTime=safeDivide( ...
+    result.variance.conditionSignalByTime,populationTotal);
+result.variance.allConditionPopulationFraction=safeDivide( ...
+    mean(result.variance.conditionSignalByTime,2),mean(populationTotal));
 [~,peak]=max(mean(C,3),[],2); [~,order]=sort(peak,'ascend');
 result.sanity=struct('peakBin',peak,'neuronOrder',order, ...
     'sorting','Peak of the equal-condition mean PSTH; same order for all heatmaps.');
@@ -312,6 +344,7 @@ out.allConditionFractionByTime=safeDivide(signal,total);
 out.allConditionFraction=safeDivide(mean(signal,2),mean(total,2));
 out.variableMarginalFractionByTime=nan(K,nt,nf);
 out.variableUniqueFractionByTime=nan(K,nt,nf);
+out.variableUniqueEnergyByTime=nan(K,nt,nf);
 out.variableMarginalFraction=nan(K,nf); out.variableUniqueFraction=nan(K,nf);
 out.variableIdentifiable=false(nf,1);
 Y=reshape(permute(P,[3 1 2]),nc,[]);
@@ -327,6 +360,7 @@ for f=1:nf
     identifiable=rank(D)-rank(reduced)==numel(columns{f});
     if ~identifiable, uniqueEnergy(:)=NaN; end
     out.variableIdentifiable(f)=identifiable;
+    out.variableUniqueEnergyByTime(:,:,f)=uniqueEnergy;
     out.variableMarginalFractionByTime(:,:,f)=safeDivide(marginal,total);
     out.variableUniqueFractionByTime(:,:,f)=safeDivide(uniqueEnergy,total);
     out.variableMarginalFraction(:,f)=safeDivide(mean(marginal,2),mean(total,2));

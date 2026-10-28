@@ -12,6 +12,7 @@ for name=fieldnames(defaults)'
 end
 p.trajectory=validatestring(p.trajectory,{'none','3d','2d','both'});
 p.similarity=validatestring(p.similarity,{'correlation','angle','cosine'});
+p.projectionError=validatestring(p.projectionError,{'sem','sd','none'});
 validateattributes(p.columns,{'numeric'},{'scalar','integer','>=',3,'finite'});
 validateattributes(p.figureWidth,{'numeric'},{'scalar','positive','finite'});
 validateattributes(p.rowHeight,{'numeric'},{'scalar','positive','finite'});
@@ -79,23 +80,48 @@ cols=min(p.columns,K); projectionRows=ceil(K/cols);
 traceRows=projectionRows*double(~isempty(selected));
 panels=(projectionRows+traceRows)*cols;
 [f,layout]=newFigure('Projection time courses',panels,cols);
-title(layout,'Fixed pooled-neuron axes: marginalized and condition time courses');
+errorMode=p.projectionError;
+if ~strcmp(errorMode,'none') && ~isfield(r.projection,['condition' upper(errorMode)])
+    warning('neuralGeometry:MissingProjectionError', ...
+        'Saved result lacks trial-based %s. Rerun fn_analyzeNeuralGeometry once to add projection bands.',upper(errorMode));
+    errorMode='none';
+end
+if strcmp(errorMode,'none')
+    title(layout,'Fixed pooled-neuron axes: marginalized and condition time courses');
+else
+    title(layout,{'Fixed pooled-neuron axes: marginalized and condition time courses', ...
+        ['Shading = +/-1 trial-based ' upper(errorMode) '; fixed axes, independent animal contributions']});
+end
 for k=1:K
     ax=nexttile(layout); hold(ax,'on');
     fi=find(r.variables==r.axisInfo.variable(k)); local=r.axisInfo.axis(k);
     F=r.factors(fi);
+    palette=lines(numel(F.levels)); handles=gobjects(numel(F.levels),1);
     for l=1:numel(F.levels)
-        plot(ax,time,reshape(F.marginalProjection(local,:,l),1,[]),'LineWidth',1.5);
+        rows=find(string(r.conditions.(r.variables(fi)))==F.levels(l));
+        mu=reshape(F.marginalProjection(local,:,l),1,[]);
+        band=projectionBand(r,k,rows,errorMode);
+        if ~isempty(band)
+            fill(ax,[time fliplr(time)],[mu-band fliplr(mu+band)],palette(l,:), ...
+                'FaceAlpha',0.18,'EdgeColor','none','HandleVisibility','off');
+        end
+        handles(l)=plot(ax,time,mu,'Color',palette(l,:),'LineWidth',1.5);
     end
     title(ax,"Marginal: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Projection');
-    if local==1, legend(ax,cellstr(F.levels),'Interpreter','none','Location','best'); end
+    if local==1, legend(ax,handles,cellstr(F.levels),'Interpreter','none','Location','best'); end
 end
 
 if ~isempty(selected)
     for k=1:K
         ax=nexttile(layout,projectionRows*cols+k); hold(ax,'on');
         for c=reshape(selected,1,[])
-            plot(ax,time,reshape(r.projection.conditionMean(k,:,c),1,[]),'Color',colors(c,:),'LineWidth',1.3);
+            mu=reshape(r.projection.conditionMean(k,:,c),1,[]);
+            band=projectionBand(r,k,c,errorMode);
+            if ~isempty(band)
+                fill(ax,[time fliplr(time)],[mu-band fliplr(mu+band)],colors(c,:), ...
+                    'FaceAlpha',0.18,'EdgeColor','none','HandleVisibility','off');
+            end
+            plot(ax,time,mu,'Color',colors(c,:),'LineWidth',1.3);
         end
         title(ax,"Conditions: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Projection');
         if k==1
@@ -108,23 +134,59 @@ end
 finish(f,'projections');
 
 % Figure 3: summaries and similarity, time-resolved variance, separation.
+% Time courses retain their per-time denominator. Summary pools time as well.
+axisPopulation=r.variance.axisFractionOfPopulationTotalByTime;
+if isfield(r.variance,'pooledAllTrialsFraction')
+    pooledPopulation=r.variance.pooledAllTrialsPopulationVariance;
+    trialMeanSummary=r.variance.pooledTrialMeanFraction;
+else
+    % Reconstruct from saved means/variances, with no neural reload or refit.
+    projected=var(reshape(r.projection.conditionMean,K,numel(time)*nc),1,2);
+    population=sum(var(reshape(r.conditionMeans,height(r.neurons),numel(time)*nc),1,2));
+    trialMeanSummary=projected./population;
+    noise=mean(r.variance.populationTotalVarianceByTime- ...
+        r.variance.populationBetweenConditionVarianceByTime);
+    pooledPopulation=population+noise;
+    trialMeanSummary(~isfinite(trialMeanSummary))=NaN;
+end
+if isfield(r.variance,'variableUniquePooledPopulationFraction')
+    variableSummary=r.variance.variableUniquePooledPopulationFraction;
+else
+    if isfield(r.variance,'variableUniqueEnergyByTime')
+        energy=r.variance.variableUniqueEnergyByTime;
+    else
+        energy=r.variance.variableUniqueFractionByTime.*r.variance.totalByTime;
+        for v=1:nf
+            if r.variance.variableIdentifiable(v)
+                e=energy(:,:,v); e(r.variance.totalByTime==0)=0; energy(:,:,v)=e;
+            end
+        end
+    end
+    variableSummary=reshape(mean(energy,2),K,nf)./pooledPopulation;
+    variableSummary(~isfinite(variableSummary))=NaN;
+end
 cols=min(p.columns,max(K,3));
-summaryCount=2+double(p.showConditionContribution);
-summarySpan=max(1,floor(cols/summaryCount));
+summaryCount=3+double(p.showConditionContribution);
+summaryRows=ceil(summaryCount/cols);
+summarySpan=max(1,floor(cols/min(summaryCount,cols)));
 varianceRows=ceil(K/cols);
-separationStart=(1+(1+double(p.showConditionContribution))*varianceRows)*cols;
+separationStart=(summaryRows+(1+double(p.showConditionContribution))*varianceRows)*cols;
 [f,layout]=newFigure('Variance and axis similarity',separationStart+2*nf,cols);
 title(layout,'In-sample variance explained, matching-variable separation, and axis similarity');
-ax=nexttile(layout,1,[1 summarySpan]); bar(ax,r.variance.variableUniqueFraction); xticks(ax,1:K);
-xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Unique variance / total variance');
-legend(ax,cellstr(r.variables),'Interpreter','none','Location','best'); title(ax,'Time-averaged variance');
+ax=nexttile(layout,1,[1 summarySpan]); bar(ax,variableSummary); xticks(ax,1:K);
+xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Unique variable variance / population total');
+title(ax,{'Task-variable separation on each axis', 'Population total includes all trials and time'});
+legend(ax,cellstr(r.variables),'Interpreter','none','Location','best');
+ax=nexttile(layout,1+summarySpan,[1 summarySpan]); bar(ax,trialMeanSummary); xticks(ax,1:K);
+xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Projected variance / population total');
+title(ax,{'Variance captured: condition means', 'Trials averaged; all time points pooled'});
 if p.showConditionContribution
-    ax=nexttile(layout,1+summarySpan,[1 summarySpan]); imagesc(ax,r.variance.conditionContribution'); colorbar(ax);
+    ax=nexttile(layout,1+2*summarySpan,[1 summarySpan]); imagesc(ax,r.variance.conditionContribution'); colorbar(ax);
     xticks(ax,1:K); xticklabels(ax,labels); yticks(ax,1:nc); yticklabels(ax,names);
     set(ax,'TickLabelInterpreter','none'); title(ax,'Condition contributions');
 end
 similarityStart=1+(summaryCount-1)*summarySpan;
-ax=nexttile(layout,similarityStart,[1 cols-similarityStart+1]);
+ax=nexttile(layout,similarityStart,[1 cols-mod(similarityStart-1,cols)]);
 switch p.similarity
     case 'angle'
         imagesc(ax,r.similarity.angleDegrees,[0 90]); title(ax,'Unsigned axis angle (degrees)');
@@ -153,18 +215,14 @@ if ~strcmp(p.similarity,'angle'), cb.Ticks=[-1 -0.5 0 0.5 1]; end
 axis(ax,'square'); xticks(ax,1:K); yticks(ax,1:K);
 xticklabels(ax,labels); yticklabels(ax,labels); set(ax,'TickLabelInterpreter','none');
 for k=1:K
-    ax=nexttile(layout,cols+k); hold(ax,'on');
-    for v=1:nf
-        plot(ax,time,reshape(r.variance.variableUniqueFractionByTime(k,:,v),1,[]),'LineWidth',1.4);
-    end
-    plot(ax,time,r.variance.allConditionFractionByTime(k,:),'k--','LineWidth',1);
-    title(ax,"Variables: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Variance / total');
-    if k==1, legend(ax,cellstr([r.variables;"All conditions"]),'Interpreter','none','Location','best'); end
+    ax=nexttile(layout,summaryRows*cols+k); hold(ax,'on');
+    plot(ax,time,axisPopulation(k,:),'LineWidth',1.4);
+    title(ax,"Variance captured: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Projected variance / population total');
 end
 
 if p.showConditionContribution
     for k=1:K
-        ax=nexttile(layout,(1+varianceRows)*cols+k); hold(ax,'on');
+        ax=nexttile(layout,(summaryRows+varianceRows)*cols+k); hold(ax,'on');
         for c=1:nc
             plot(ax,time,reshape(r.variance.conditionContributionByTime(k,:,c),1,[]),'Color',colors(c,:));
         end
@@ -186,7 +244,7 @@ for v=1:nf
 end
 finish(f,'variance');
 
-% Figure 4: separate factor spaces, then same-rank cross-factor comparisons.
+% Separate factor spaces, then same-rank cross-factor comparisons.
 if ~strcmp(p.trajectory,'none')
     % Put action before task irrespective of condition-table column order.
     order=[find(strcmpi(r.variables,'action'));find(strcmpi(r.variables,'task'))];
@@ -269,4 +327,20 @@ end
         end
         if p.visible, figures.(name)=fig; else, figures.(name)=[]; end
     end
+end
+
+function band=projectionBand(r,k,rows,mode)
+% Marginal means weight conditions equally, even with unequal trial counts.
+switch mode
+    case 'sem'
+        band=sqrt(sum(r.projection.conditionSEM(k,:,rows).^2,3))/numel(rows);
+    case 'sd'
+        means=r.projection.conditionMean(k,:,rows);
+        % Spread of a balanced mixture of condition-specific trial responses.
+        band=sqrt(mean(r.projection.conditionSD(k,:,rows).^2+ ...
+            (means-mean(means,3)).^2,3));
+    otherwise
+        band=[];
+end
+band=reshape(band,1,[]);
 end

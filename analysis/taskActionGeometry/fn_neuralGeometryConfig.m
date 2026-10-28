@@ -21,9 +21,10 @@ plotCfg.visible=true;
 plotCfg.savePath='';           % PNG folder; visible=false saves without display.
 plotCfg.prefix='neuralGeometry';
 plotCfg.trialTypes=strings(0,1); % Condition names for extra traces; []: skip.
+plotCfg.projectionError='sem'; % Projection shading: 'sem', 'sd', or 'none'; across trials.
 plotCfg.trajectory='none';     % Separate figure: '3d', '2d', 'both', or 'none'; ALL conditions.
 plotCfg.trajectoryAxes=[];     % []: first 3 per factor + same-rank cross-factor pairs; or custom triplet.
-plotCfg.similarity='correlation'; % Pearson neuron-weight correlation; also 'angle' or 'cosine'.
+plotCfg.similarity='cosine'; % Pearson neuron-weight correlation; also 'angle' or 'cosine'.
 plotCfg.showConditionContribution=false; % Include condition-contribution heatmap and time courses.
 plotCfg.columns=6;             % Maximum subplot columns (at least 3).
 plotCfg.figureWidth=1800;      % Pixels; height grows with the number of rows.

@@ -123,6 +123,7 @@ and [parameter guide](https://umap-learn.readthedocs.io/en/latest/parameters.htm
 | `metric` | `'correlation'`; also `'euclidean'`, `'cosine'`. |
 | `nEpochs` | 500 optimizer epochs. |
 | `randomize` | false; the package uses its fixed default RNG seed, with one optimization worker. Caller RNG and warning settings are restored. True allows stochastic reruns; this wrapper does not expose a numeric seed. |
+| `init` | `'spectral'` (default) or `'random'`. Random initialization avoids spectral eigensolver degeneracy on small/disconnected graphs and remains reproducible when `randomize=false`. |
 | `backendMethod` | `'MEX'`; use `'MATLAB'` for the package's slower MATLAB optimizer. |
 | `time`, `timeWindow` | Explicit time vector overrides `(frame-eventFrame)/frameRate`; window restricts all preparation and fitting. |
 | `normalization` | `'none'`, `'zscore'`, or `'rms'`, as defined above. |

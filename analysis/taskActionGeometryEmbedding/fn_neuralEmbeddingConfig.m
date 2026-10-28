@@ -6,6 +6,7 @@ cfg.spread=1;
 cfg.metric='correlation';     % 'correlation', 'euclidean', or 'cosine'.
 cfg.nEpochs=500;
 cfg.randomize=false;          % run_umap resets to its default RNG seed.
+cfg.init='spectral';           % 'random' avoids spectral initialization on disconnected graphs.
 cfg.backendMethod='MEX';      % run_umap optimizer; 'MATLAB' is a slower option.
 cfg.normalization='none';     % 'none', 'zscore', 'rms'; raw pooled samples before averaging.
 cfg.time=[];

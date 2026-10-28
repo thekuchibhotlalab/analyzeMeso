@@ -3,6 +3,12 @@ aniPath = 'B:\animal';
 
 animals = {'zz153_PPC','zz159_PPC',...
            'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
+%%
+clear;
+aniPath = 'B:\animal';
+
+animals = {'zz153_PPC','zz159_PPC',...
+           'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
 %% Load animal Data
 allAni = {};
 for i = 1:length(animals)
@@ -47,18 +53,18 @@ repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
-%intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
+intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
 %intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
 
 
-intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
+%intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
 intAct = cell(4,numel(allTrialsel));
 for a = 1:numel(allTrialsel)
     names = string({allTrialsel{a}.neuralSelection.name});
     [found,rows] = ismember(intNames,names);
     assert(all(found),'The selection must include all four Int condition definitions.');
     for k = 1:length(rows)
-        trials = allTrialsel{a}.neuralSelection(rows(k)).trialInfoNeural;
+        %trials = allTrialsel{a}.neuralSelection(rows(k)).trialInfoNeural;
         intAct{k,a} = tempAct{rows(k),a};
     end
 end

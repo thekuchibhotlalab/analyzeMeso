@@ -40,7 +40,8 @@ unless explicitly requested.
 | [analysis/TCA](analysis/TCA) | Tensor component analysis workflows. |
 | [analysis/taskActionGeometry](analysis/taskActionGeometry/README.md) | Fixed linear neural axes, task/action variance, and geometry. |
 | [analysis/taskActionGeometryEmbedding](analysis/taskActionGeometryEmbedding/README.md) | Trial-averaged 2D UMAP, pooled across animals and colored by condition/action/task. |
-| [analysis/earlyLearningProgression](analysis/earlyLearningProgression/README.md) | Early trial PSTHs, start/end comparisons, and condition-specific high-variance or trending neuron subsets. |
+| [analysis/earlyLearningProgression](analysis/earlyLearningProgression/README.md) | Early trial PSTHs, start/end comparisons, and AC stimulus/reward response alignment over learning. |
+| [analysis/earlyLearningEmbedding](analysis/earlyLearningEmbedding/README.md) | UMAP of 30 overlapping stimulus/reward learning chunks, with neurons concatenated across animals. |
 | [analysis/taskSpecific](analysis/taskSpecific), [analysis/trackingEval](analysis/trackingEval) | Additional task-specific and tracking analyses. |
 | [analysis/oldAnalysis](analysis/oldAnalysis) | Archived analyses; these are not the current trial-selection entry points. |
 
@@ -338,19 +339,36 @@ dataset-specific; the directory sequence is not an unattended end-to-end runner.
 [earlyLearningProgression](analysis/earlyLearningProgression/README.md) uses the
 same condition × animal activity cells, but preserves the third dimension as
 **chronological within-condition trial order**. A table with only `stimulus`
-labels is enough. It plots the first three individual-trial PSTHs, first-five
-versus last-five averages, and progression across the first 30 trials for both
-all pooled neurons and condition-specific selected neurons.
+labels is enough. It plots the first three individual-trial PSTHs, first-ten
+versus last-ten averages, and progression across the first 50 trials for
+all pooled neurons and each animal separately.
+
+For AC stimulus/reward alignment, run
+[example_stimRewardAlignment.m](analysis/earlyLearningProgression/example_stimRewardAlignment.m).
+It loads `dffStim` and compares stimulus responses (frames 1–3 after onset) with
+reward-period responses (frames 3–4 after choice threshold) on rewarded trials.
+Per-animal S1/S2 scatter plots and cross-bin correlation matrices show how neural
+response patterns align over consecutive 50-trial bins through T1E → T1M → T1L.
+See the [analysis documentation](analysis/earlyLearningProgression/README.md#ac-stimulusreward-alignment)
+for frame mapping, the correlation formula, and output fields.
 
 ```matlab
 addpath('analysis/earlyLearningProgression');
 conditions=table([1;2],'VariableNames',{'stimulus'});
 [cfg,plotCfg]=fn_trialProgressionConfig();
-cfg.nProgressionTrials=30;
+cfg.nProgressionTrials=50;
 cfg.selectionMethod='variance'; % Or 'progression' for a linear trial-order trend.
-cfg.comparisonReference='all';  % Or 'progression': compare within the first 30.
+cfg.comparisonReference='progression'; % First 10 vs last 10 within the first 50.
 [progression,figures]=fn_analyzeTrialProgression(earlyAct,conditions,cfg,plotCfg);
 ```
+
+The editable example uses `cfg.groupBy='outcome'`: rewarded, incorrect, and probe
+remain separate, with trials concatenated in T1E -> T1M -> T1L order within each
+animal. `cfg.groupBy='phaseOutcome'` keeps phases separate instead. Pass aligned
+`neuralSelection(c).trialInfoNeural` tables as a fifth condition × animal cell
+input. Recorded outcomes determine the groups; `sourceTrialRow` restores order.
+The extra outcome-comparison figure overlays group means. Heatmaps default to
+five-trial bins; `plotCfg.heatmapMethod='smooth'` instead applies a moving average.
 
 Variance is measured across trials at each time point, then averaged over time.
 Progression mode ranks the variance explained by a linear trial-order trend;
@@ -447,6 +465,18 @@ or evidence of task/action factorization. Use it to explore local nonlinear stru
 `embedding.pointInfo` and `pointLabels` identify every point; `neurons` identifies
 feature columns. `fn_plotNeuralEmbedding(embedding,embedPlotCfg)` recolors/replots
 without refitting. Save the first output alone to keep graphics separate.
+
+## AC task/stimulus geometry
+
+[`analysis/taskStimGeometry`](analysis/taskStimGeometry/README.md) fits three
+independent binary LDA axes to reduced stimulus- or choice-relative reward-period
+responses: S1 versus S2, S3 versus S4, and S1/S2 versus S3/S4. The condition table
+defines arbitrary comparison labels and exclusions. Neurons pool across animals;
+trial-level plots use reproducible pseudo-trials with every source trial recorded.
+All three axis pairs show stimulus-colored points and decision boundaries.
+Start with `example_taskStimGeometry.m` after loading `intAct` using your existing
+loader. See the folder README for extraction, covariance, regularization, and
+pseudo-trial math. Base MATLAB only; figures stay separate from data.
 
 ## Tests
 

@@ -2,19 +2,19 @@
 % Rows of this table MUST match rows of intAct. Labels are supplied explicitly;
 % the analysis never guesses task/action from condition names.
 
-%conditions=table(["Int_S1_L";"Int_S2_R";"Int_S3_L";"Int_S4_R"], ...
-%    ["L";"R";"L";"R"],["T1";"T1";"T2";"T2"], ...
-%    'VariableNames',{'conditionName','action','task'});
-
-conditions=table(["T1_S1_L";"T1_S2_R";"T2_S3_L";"T2_S4_R"], ...
+conditions=table(["Int_S1_L";"Int_S2_R";"Int_S3_L";"Int_S4_R"], ...
     ["L";"R";"L";"R"],["T1";"T1";"T2";"T2"], ...
     'VariableNames',{'conditionName','action','task'});
 
+%conditions=table(["T1_S1_L";"T1_S2_R";"T2_S3_L";"T2_S4_R"], ...
+%    ["L";"R";"L";"R"],["T1";"T1";"T2";"T2"], ...
+%    'VariableNames',{'conditionName','action','task'});
+
 [cfg,plotCfg]=fn_neuralGeometryConfig();
 cfg.method='lda';              % 'meanSquared' or 'regression' to compare.
-cfg.nAxes=1;                   % Independently fit up to 3 axes per variable.
-cfg.timeWindow = [-1 0.2];         % Whole trial; or e.g. [-0.5 1] seconds.
-cfg.normalization='none';      % Input has already been normalized.
+cfg.nAxes=3;                   % Independently fit up to 3 axes per variable.
+cfg.timeWindow = [-1.0 0.2];         % Whole trial; or e.g. [-0.5 1] seconds.
+cfg.normalization='zscore';      % Input has already been normalized.
 cfg.frameRate=15; cfg.eventFrame=31;
 % cfg.animalLabels=string(animals);
 plotCfg.trialTypes=conditions.conditionName;
