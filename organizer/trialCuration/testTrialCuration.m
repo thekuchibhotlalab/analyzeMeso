@@ -209,8 +209,85 @@ cfg.conditionDef(1).name="";
 verifyError(testCase,@()fn_prepareTrialData(T,S,cfg),'trialCuration:ConditionLabel');
 end
 
+function testManualTrialsTrackingAndExtraction(testCase)
+[T,S,cfg]=fixture();
+T.trialNum=100+(1:height(T))'*7; % Deliberately different from table rows.
+T.RT(:)=99; % Manual selection bypasses behavioral and RT filters.
+S.dffChoice=cell(height(S),1);
+for s=1:height(S)
+    S.dffChoice{s}=cat(3,ones(4,3,'single')*(S.sessionRec(s)+1), ...
+        ones(4,3,'single')*(S.sessionRec(s)+2));
+end
+requested=T.trialNum([1 3 5 7 9 11]);
+for method={'greedy','lookahead','error'}
+    cfg.trackingMethod=method{1};
+    cfg.sessionCountMethod='fixed'; cfg.numSessions=2;
+    c=fn_prepareTrialData(T,S,cfg,'TrialNumbers',[flipud(requested);requested(1)],'TrialNumberField','trialNum');
+    verifyEqual(testCase,c.selectionAllSessions.trialsAfterRT.sourceTrialRow,(1:2:11)');
+    verifyEqual(testCase,c.tracking.numSessionsSelected,2);
+    verifyEqual(testCase,height(c.tracking.sessions),4);
+    verifyEqual(testCase,sort(unique(c.sessionExcludedTrials.dropReason)), ...
+        sort(["badTracking";"missingOffsetMap";"sessionNotSelected"]));
+    n=fn_prepareNeuralData(requested,S,'TrialInfo',T,'SessionInfoBeh',S,'Config',cfg,'TrialNumberField','trialNum');
+    verifyEqual(testCase,n.tracking.selectedSessionRec,c.tracking.selectedSessionRec);
+    trials=n.neuralSelection.trialInfoNeural;
+    verifyTrue(testCase,all(ismember(trials.trialNum,requested)));
+    verifyEqual(testCase,trials.trialNum,T.trialNum(trials.sourceTrialRow));
+    verifyEqual(testCase,reshape(n.byCondition.ManualTrials.neuralRaw(1,1,:),[],1), ...
+        single(trials.sessionRec+trials.trialInSession));
+end
+end
+
+function testManualGroupsAndInvalidIDs(testCase)
+[T,S,cfg]=fixture(); T.trialNum=(101:112)';
+cfg.selectSessionsByTracking=false;
+cfg.sessionCountMethod='fixed'; cfg.numSessions=Inf;
+cfg.conditionDef=cfg.conditionDef(1:2);
+c=fn_prepareTrialData(T,S,cfg,'TrialNumbers',{[1 5],[]});
+verifyEqual(testCase,c.selection(1).trials.sourceTrialRow,[1;5]);
+verifyEmpty(testCase,c.selection(2).trials);
+verifyEqual(testCase,c.conditionDef,cfg.conditionDef);
+c=fn_prepareTrialData(T,S,cfg,'TrialNumbers',[]);
+verifyEqual(testCase,sum(c.selectionQC.NSelected),0);
+verifyError(testCase,@()fn_prepareTrialData(T,S,cfg,'TrialNumbers',999), ...
+    'trialCuration:UnknownTrialNumbers');
+T.trialNum(2)=T.trialNum(1);
+verifyError(testCase,@()fn_prepareTrialData(T,S,cfg,'TrialNumbers',101,'TrialNumberField','trialNum'), ...
+    'trialCuration:ManualTrialNumbers');
+end
+
+function testManualPoolGroupedByStimulusAction(testCase)
+[T,S,cfg]=fixture();
+cfg.conditionDef=cfg.conditionDef(1:4);
+for k=1:4
+    cfg.conditionDef(k).dayLabels="T2E"; % Deliberately does not match metadata.
+    cfg.conditionDef(k).taskLabels="ignored";
+end
+T.RT(:)=99;
+pool=[8 1 7 2 6 3 5 4 1]; % Unsorted and duplicated; rows 9:12 must stay excluded.
+c=fn_prepareTrialData(T,S,cfg,'TrialNumbers',pool,'GroupManualTrialsByCondition',true);
+verifyEqual(testCase,c.conditionDef,cfg.conditionDef);
+verifyEqual(testCase,numel(c.selection),4);
+expectedRows={[1;3],[2;4],[5;7],[6;8]};
+for k=1:4
+    verifyEqual(testCase,c.selection(k).trials.sourceTrialRow,expectedRows{k});
+end
+verifyEqual(testCase,c.tracking.curve.nTrials(end),8);
+S.dffChoice=repmat({ones(4,3,2,'single')},height(S),1);
+n=fn_prepareNeuralData(pool,S,'TrialInfo',T,'SessionInfoBeh',S,'Config',cfg, ...
+    'GroupManualTrialsByCondition',true);
+verifyEqual(testCase,numel(n.neuralSelection),4);
+verifyEqual(testCase,sort(string(fieldnames(n.byCondition))),sort(string({cfg.conditionDef.name})'));
+for k=1:4
+    verifyEqual(testCase,n.neuralSelection(k).nNeuralTrials,2);
+    verifyEqual(testCase,n.neuralSelection(k).trialInfoNeural.sourceTrialRow, ...
+        c.selection(k).trials.sourceTrialRow);
+end
+end
+
 function [T,S,cfg]=fixture()
 cfg=fn_expertTrialSelectionConfig(); cfg.makePlots=false; cfg.verbose=false;
+cfg.sessionCountMethod='fixed'; cfg.trackingMethod='greedy';
 cfg.minSessionsPerStage=1; cfg.matchRemaining=false;
 cfg.phaseOrder=["T1L","T2L"];
 sessionRec=[10;20;30;40;50;60];

@@ -82,6 +82,7 @@ end
 
 function c=fn_select(T,S,cfg)
 cfg.makePlots=false; cfg.verbose=false; cfg.selectSessionsByTracking=false;
+cfg.sessionCountMethod='fixed'; cfg.numSessions=Inf; % Test trial filters only.
 c=fn_prepareTrialData(T,S,cfg);
 end
 

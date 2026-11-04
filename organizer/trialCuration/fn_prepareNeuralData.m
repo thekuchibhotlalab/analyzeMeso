@@ -15,14 +15,44 @@ function [curated,figures] = fn_prepareNeuralData(curated,sessionInfoFile,vararg
 % Includes the tracking tradeoff curve and selected session count, if available.
 % Trial-selection plots are controlled separately by fn_prepareTrialData's
 % MakePlot argument. Saved filenames are in curated.plotFiles.
+% Manual entry: replace curated with a row-number vector (one ManualTrials group)
+% or cell array (one list per cfg.conditionDef), and supply 'TrialInfo',table,
+% 'SessionInfoBeh',table, 'Config',cfg. Animal supplies both metadata tables.
+% Runs the usual session ranking/cutoff before extraction; behavioral/RT filters
+% are replaced by the explicit lists. 'TrialNumberField','trialNum' optionally
+% matches values in that column instead of trialInfo row numbers (the default).
+% 'GroupManualTrialsByCondition',true splits a numeric pool by cfg stimulus/action.
 p=inputParser;
 if nargin<2, sessionInfoFile=[]; end
 addParameter(p,'DataPath','',@(x)(ischar(x)&&(isrow(x)||isempty(x)))|| ...
     (isstring(x)&&isscalar(x)&&~ismissing(x)));
 addParameter(p,'ShowPlots',false,@(x)islogical(x)&&isscalar(x));
+addParameter(p,'Config',[],@(x)isempty(x)||(isstruct(x)&&isscalar(x)));
+addParameter(p,'TrialInfo',[]);
+addParameter(p,'TrialNumberField','',@(x)ischar(x)||(isstring(x)&&isscalar(x)));
+addParameter(p,'GroupManualTrialsByCondition',false,@(x)islogical(x)&&isscalar(x));
+addParameter(p,'SessionInfoBeh',[]);
 addParameter(p,'PlotSavePath','',@(x)(ischar(x)&&isrow(x))|| ...
     (ischar(x)&&isempty(x))||(isstring(x)&&isscalar(x)&&~ismissing(x)));
 parse(p,varargin{:});
+if isnumeric(curated)||iscell(curated)
+    assert(~any(ismember({'TrialInfo','SessionInfoBeh'},p.UsingDefaults)), ...
+        'trialCuration:ManualMetadata', ...
+        'Manual neural loading requires TrialInfo and SessionInfoBeh metadata.');
+    cfg=p.Results.Config;
+    if isempty(cfg), cfg=fn_defaultTrialSelectionConfig(); end
+    cfg.loadNeural=false; % Rank/select sessions before opening neural arrays.
+    cfg.saveFile=''; % Save only the completed neural result below.
+    if ~isempty(p.Results.Config)&&isfield(p.Results.Config,'saveFile')
+        saveFile=p.Results.Config.saveFile;
+    else
+        saveFile='';
+    end
+    curated=fn_prepareTrialData(p.Results.TrialInfo,p.Results.SessionInfoBeh,cfg, ...
+        'TrialNumbers',curated,'TrialNumberField',p.Results.TrialNumberField, ...
+        'GroupManualTrialsByCondition',p.Results.GroupManualTrialsByCondition);
+    curated.cfg.saveFile=saveFile;
+end
 showPlots=p.Results.ShowPlots;
 plotSavePath=char(p.Results.PlotSavePath);
 assert(~curated.neuralLoaded,'trialCuration:AlreadyLoaded','Neural activity is already loaded.');

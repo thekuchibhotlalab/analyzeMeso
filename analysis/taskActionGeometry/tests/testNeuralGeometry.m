@@ -138,7 +138,7 @@ end
 function testTimePoolingCancelsOppositeSignals(t)
 T=table(["one";"two"],["a";"b"],'VariableNames',{'conditionName','task'});
 X={repmat([1 -1],1,1,4);repmat([-1 1],1,1,6)};
-[c,p]=fn_neuralGeometryConfig(); c.verbose=false; p.makePlot=false;
+[c,p]=fn_neuralGeometryConfig(); c.crossValidate=false; c.verbose=false; p.makePlot=false;
 r=fn_analyzeNeuralGeometry(X,T,c,p); verifyEqual(t,size(r.weights,2),0);
 end
 function testThreeFactorsAndThreeLevels(t)
@@ -152,7 +152,7 @@ for a=1:2
         X{k,a}=repmat(signal,1,5,4+a);
     end
 end
-[c,p]=fn_neuralGeometryConfig(); c.method='regression'; c.verbose=false; p.makePlot=false;
+[c,p]=fn_neuralGeometryConfig(); c.crossValidate=false; c.method='regression'; c.verbose=false; p.makePlot=false;
 r=fn_analyzeNeuralGeometry(X,T,c,p);
 verifyEqual(t,[r.factors.nAxes],[2 1 1]);
 verifyEqual(t,height(r.neurons),8);
@@ -180,7 +180,7 @@ p.prefix='legacy'; [~,files]=fn_plotNeuralGeometry(r,p);
 verifyEqual(t,imread(files.variance),imread(r.plotFiles.variance));
 end
 function [X,T,c,p]=fixture()
-[c,p]=fn_neuralGeometryConfig(); c.verbose=false; p.makePlot=false;
+[c,p]=fn_neuralGeometryConfig(); c.crossValidate=false; c.verbose=false; p.makePlot=false;
 c.time=linspace(-0.3,0.4,8); c.animalLabels=["a","b"];
 T=table(["T1L";"T1R";"T2L";"T2R"],["T1";"T1";"T2";"T2"], ...
     ["L";"R";"L";"R"],'VariableNames',{'conditionName','task','action'});

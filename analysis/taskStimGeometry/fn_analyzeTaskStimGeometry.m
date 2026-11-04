@@ -1,8 +1,10 @@
 function [result,figures]=fn_analyzeTaskStimGeometry(activity,conditions,cfg,plotCfg,trialInfo)
 %FN_ANALYZETASKSTIMGEOMETRY Binary LDA on one reduced response per neuron/trial.
 % activity: condition x animal cells, neuron x time x trial, stimulus aligned.
-% conditions: conditionName, stimulus (plot color), and three binary columns.
+% conditions: conditionName, stimulus (plot color), and three or six binary columns.
 % Empty comparison labels exclude that condition from THAT axis fit only.
+% Keep ALL animal columns and labels: animals with any empty activity cell
+% are skipped automatically (default missingAnimal='exclude').
 % trialInfo: optional matching tables; required for reward timing. Original
 % cell trial indices and supplied metadata are retained in pseudo-trial maps.
 [defaults,~]=fn_taskStimGeometryConfig();
@@ -31,18 +33,19 @@ if ~isempty(cfg.nPseudoTrials)
     validateattributes(cfg.nPseudoTrials,{'numeric'},{'scalar','integer','positive','finite'});
 end
 cfg.comparisons=string(cfg.comparisons(:));
-assert(numel(cfg.comparisons)==3&&numel(unique(cfg.comparisons))==3, ...
-    'taskStim:Conditions','Specify three distinct comparison columns.');
+nf=numel(cfg.comparisons);
+assert(ismember(nf,[3 6])&&numel(unique(cfg.comparisons))==nf, ...
+    'taskStim:Conditions','Specify three or six distinct comparison columns.');
 required=["conditionName";"stimulus";cfg.comparisons];
 assert(istable(conditions)&&height(conditions)==nc&& ...
     all(ismember(required,string(conditions.Properties.VariableNames))), ...
-    'taskStim:Conditions','Provide conditionName, stimulus and three binary comparison columns.');
+    'taskStim:Conditions','Provide conditionName, stimulus and all configured binary comparison columns.');
 names=string(conditions.conditionName); stimuli=string(conditions.stimulus);
 assert(iscolumn(names)&&iscolumn(stimuli)&&numel(unique(names))==nc&& ...
     all(~ismissing(names)&strlength(names)>0&~ismissing(stimuli)&strlength(stimuli)>0), ...
     'taskStim:Conditions','Use unique condition names and one nonempty stimulus label per row.');
-groups=zeros(nc,3); levels=cell(3,1);
-for f=1:3
+groups=zeros(nc,nf); levels=cell(nf,1);
+for f=1:nf
     labels=string(conditions.(cfg.comparisons(f)));
     assert(iscolumn(labels),'taskStim:Conditions','Comparison labels must be columns.');
     used=~ismissing(labels)&strlength(labels)>0;
@@ -53,8 +56,15 @@ end
 if isempty(cfg.animalLabels), cfg.animalLabels="Animal "+string(1:na); end
 cfg.animalLabels=string(cfg.animalLabels(:));
 assert(numel(cfg.animalLabels)==na&&all(~ismissing(cfg.animalLabels)&strlength(cfg.animalLabels)>0), ...
-    'taskStim:Animals','Provide one nonempty animal label per input column.');
-[X,maps,neurons,audit,normInfo,counts]=reduce(activity,trialInfo,cfg);
+    'taskStim:Animals', ...
+    ['Received %d animal labels for %d input columns. Keep the original activity, metadata, ' ...
+    'and label columns; empty animals are excluded automatically. Use animalLabels=[] for automatic labels.'], ...
+    numel(cfg.animalLabels),na);
+[X,maps,neurons,audit,normInfo,counts]=reduce(activity,trialInfo,cfg,names);
+for a=find(~audit.included)'
+    fprintf('Task/stim geometry: skipping %s (input column %d): %s\n', ...
+        cfg.animalLabels(a),a,audit.reason(a));
+end
 n=height(neurons); M=zeros(n,nc); blocks=cell(nc,na); indices=cell(na,1);
 for a=1:na
     ix=find(neurons.animalIndex==a); indices{a}=ix;
@@ -65,8 +75,8 @@ for a=1:na
         else, blocks{c,a}=(Z*Z')/(size(Z,2)-1); end
     end
 end
-W=nan(n,3); thresholds=nan(1,3); fits=struct([]);
-for f=1:3
+W=nan(n,nf); thresholds=nan(1,nf); fits=struct([]);
+for f=1:nf
     g=groups(:,f); mu=zeros(n,2); alpha=zeros(nc,1);
     for l=1:2
         mu(:,l)=mean(M(:,g==l),2); alpha(g==l)=1/(2*sum(g==l));
@@ -112,21 +122,35 @@ result.axisInfo=table(cfg.comparisons,string(cellfun(@(x)x(1),levels)), ...
     string(cellfun(@(x)x(2),levels)),thresholds',reshape([fits.valid],[],1), ...
     'VariableNames',{'comparison','negativeClass','positiveClass','threshold','valid'});
 result.reducedActivity=X; result.trialMap=maps;
+result.includedAnimalIndices=find(audit.included);
+result.includedAnimalLabels=cfg.animalLabels(audit.included);
 result.weightsRaw=W./normInfo.scale;
 result.thresholdsRaw=thresholds+(W'*(normInfo.offset./normInfo.scale))';
 result.cosine=W'*W;
+result.cosine(result.cosine>1)=1; result.cosine(result.cosine< -1)=-1;
+result.angleDegrees=acosd(result.cosine); % Oriented angles: 0 parallel, 90 orthogonal, 180 opposite.
 result.estimation='In-sample regularized LDA; equal classes and equal conditions within each class. Not cross-validated.';
 result.assumption='Pooled neurons; cross-animal within-condition trial noise is independent. Plotted multi-animal points are pseudo-trials.';
 result.projection=projectTrials(X,maps,W,thresholds,indices,cfg,nc,na);
 [figures,result.plotFiles]=fn_plotTaskStimGeometry(result,plotCfg);
 end
 
-function [X,maps,neurons,audit,info,counts]=reduce(activity,trialInfo,cfg)
+function [X,maps,neurons,audit,info,counts]=reduce(activity,trialInfo,cfg,conditionNames)
 [nc,na]=size(activity); X=cell(nc,na); maps=X; counts=zeros(nc,na);
 neurons=table(); included=false(na,1); nNeurons=zeros(na,1); dropped=zeros(na,1); reason=strings(na,1);
 info=struct('method',cfg.normalization,'offset',[],'scale',[], ...
     'scope','All reduced response trials across supplied conditions per neuron, before fitting.');
 for a=1:na
+    % Exclude the entire animal BEFORE reading its metadata or other cells.
+    % Retain original input-column indices in outputs for unambiguous mapping.
+    emptyConditions=cellfun(@isempty,activity(:,a));
+    if any(emptyConditions)
+        reason(a)="Empty activity for: "+strjoin(conditionNames(emptyConditions),", ");
+        if strcmp(cfg.missingAnimal,'error')
+            error('taskStim:Animal','Animal %s (column %d): %s',cfg.animalLabels(a),a,reason(a));
+        end
+        continue;
+    end
     nn=[];
     for c=1:nc
         A=activity{c,a}; if isempty(A), continue; end
@@ -136,7 +160,12 @@ for a=1:na
         assert(size(A,1)==nn,'taskStim:Neurons','Match tracked neuron rows across conditions in animal %d.',a);
         nt=size(A,3); T=trialInfo{c,a};
         if isempty(T), T=table((1:nt)','VariableNames',{'inputTrial'}); end
-        assert(istable(T)&&height(T)==nt,'taskStim:TrialInfo','Metadata rows must match activity trials (%d,%d).',c,a);
+        assert(istable(T),'taskStim:TrialInfo', ...
+            'Metadata for %s / %s (cell %d,%d) must be a table.',conditionNames(c),cfg.animalLabels(a),c,a);
+        assert(height(T)==nt,'taskStim:TrialInfo', ...
+            ['%s / %s (cell %d,%d): activity has %d trials but metadata has %d rows. ' ...
+            'Select both from the same neuralSelection entry; check intNames against conditions.conditionName.'], ...
+            conditionNames(c),cfg.animalLabels(a),c,a,nt,height(T));
         if strcmp(cfg.period,'stimulus')
             centers=repmat(cfg.eventFrame,nt,1); offsets=cfg.stimulusOffsets;
         else
@@ -198,7 +227,7 @@ for c=1:nc
         N=counts(1); % With one animal show every actual trial, no resampling.
     elseif isempty(cfg.nPseudoTrials), N=min(counts);
     else, N=cfg.nPseudoTrials; end
-    scores=zeros(N,3); source=zeros(N,numel(animals)); reduced=source;
+    scores=zeros(N,size(W,2)); source=zeros(N,numel(animals)); reduced=source;
     for j=1:numel(animals)
         a=animals(j); contribution=X{c,a}'*W(indices{a},:);
         P.animalContribution{c,a}=contribution;

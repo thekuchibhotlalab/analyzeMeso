@@ -39,6 +39,7 @@ unless explicitly requested.
 | [analysis/step1_prepareNeuralData](analysis/step1_prepareNeuralData) | Editable example for preparing responses across animals. |
 | [analysis/TCA](analysis/TCA) | Tensor component analysis workflows. |
 | [analysis/taskActionGeometry](analysis/taskActionGeometry/README.md) | Fixed linear neural axes, task/action variance, and geometry. |
+| [analysis/taskActionDecoding](analysis/taskActionDecoding/README.md) | Per-animal single-neuron LDA and population SVM; choice within each task and task decoding in four frame windows. |
 | [analysis/taskActionGeometryEmbedding](analysis/taskActionGeometryEmbedding/README.md) | Trial-averaged 2D UMAP, pooled across animals and colored by condition/action/task. |
 | [analysis/earlyLearningProgression](analysis/earlyLearningProgression/README.md) | Early trial PSTHs, start/end comparisons, and AC stimulus/reward response alignment over learning. |
 | [analysis/earlyLearningEmbedding](analysis/earlyLearningEmbedding/README.md) | UMAP of 30 overlapping stimulus/reward learning chunks, with neurons concatenated across animals. |
@@ -468,15 +469,30 @@ without refitting. Save the first output alone to keep graphics separate.
 
 ## AC task/stimulus geometry
 
-[`analysis/taskStimGeometry`](analysis/taskStimGeometry/README.md) fits three
+[`analysis/taskStimGeometry`](analysis/taskStimGeometry/README.md) fits six
 independent binary LDA axes to reduced stimulus- or choice-relative reward-period
-responses: S1 versus S2, S3 versus S4, and S1/S2 versus S3/S4. The condition table
+responses: S1 versus S2, S3 versus S4, S1/S2 versus S3/S4, S1 versus S3,
+S2 versus S4, and S1/S3 versus S2/S4 (action). The condition table
 defines arbitrary comparison labels and exclusions. Neurons pool across animals;
 trial-level plots use reproducible pseudo-trials with every source trial recorded.
-All three axis pairs show stimulus-colored points and decision boundaries.
+Two rows of pairwise projections show stimulus-colored points and decision
+boundaries; a six-axis cosine/angle matrix compares all neural weight vectors.
 Start with `example_taskStimGeometry.m` after loading `intAct` using your existing
 loader. See the folder README for extraction, covariance, regularization, and
 pseudo-trial math. Base MATLAB only; figures stay separate from data.
+
+## Learning progression embedding
+
+[`analysis/learningProgressionEmbedding`](analysis/learningProgressionEmbedding/README.md)
+generalizes the earlier AC embedding to any selected interval of T1E, T1M, T1L,
+T2E, T2M, T2L, and Int. Use `intAct`, a stimulus/action/task condition table, and
+matching trial metadata. Filter phases, named trial types or label values (e.g.
+T2 only or both tasks), reduce stimulus/reward-period responses, and form learning
+bins in phase/source-trial order. Neurons pool across animals for shared UMAP and
+PCA; figures label task, action, stimulus, response period and progression.
+Exact bin ranges, phase composition and source identities remain inspectable.
+Start with `example_learningProgressionEmbedding.m`; existing early-learning
+functions remain available.
 
 ## Tests
 

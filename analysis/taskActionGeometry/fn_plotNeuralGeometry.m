@@ -19,6 +19,7 @@ validateattributes(p.rowHeight,{'numeric'},{'scalar','positive','finite'});
 validateattributes(p.showConditionContribution,{'logical','numeric'},{'scalar','binary'});
 figures=struct(); files=struct();
 if ~p.makePlot, return; end
+isCV=isfield(r,'crossValidation')&&r.crossValidation.enabled;
 K=size(r.weights,2);
 nc=height(r.conditions); nf=numel(r.variables); time=r.time;
 names=string(r.conditions.conditionName); labels=r.axisLabels;
@@ -88,6 +89,9 @@ if ~strcmp(errorMode,'none') && ~isfield(r.projection,['condition' upper(errorMo
 end
 if strcmp(errorMode,'none')
     title(layout,'Fixed pooled-neuron axes: marginalized and condition time courses');
+elseif isCV
+    title(layout,{'Held-out projections, averaged over training splits', ...
+        'Shading = SEM across repeat means; partition variability, not animal uncertainty'});
 else
     title(layout,{'Fixed pooled-neuron axes: marginalized and condition time courses', ...
         ['Shading = +/-1 trial-based ' upper(errorMode) '; fixed axes, independent animal contributions']});
@@ -172,12 +176,23 @@ summarySpan=max(1,floor(cols/min(summaryCount,cols)));
 varianceRows=ceil(K/cols);
 separationStart=(summaryRows+(1+double(p.showConditionContribution))*varianceRows)*cols;
 [f,layout]=newFigure('Variance and axis similarity',separationStart+2*nf,cols);
-title(layout,'In-sample variance explained, matching-variable separation, and axis similarity');
-ax=nexttile(layout,1,[1 summarySpan]); bar(ax,variableSummary); xticks(ax,1:K);
+if isCV
+    title(layout,'Held-out variance and separation: split means +/- SEM across repeats; mean-axis similarity');
+else
+    title(layout,'In-sample variance explained, matching-variable separation, and axis similarity');
+end
+ax=nexttile(layout,1,[1 summarySpan]); bars=bar(ax,variableSummary); xticks(ax,1:K);
+if isCV
+    hold(ax,'on'); se=r.crossValidation.varianceSEM.variableUniquePooledPopulationFraction;
+    for v=1:nf, errorbar(ax,bars(v).XEndPoints,variableSummary(:,v),se(:,v),'k.','HandleVisibility','off'); end
+end
 xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Unique variable variance / population total');
 title(ax,{'Task-variable separation on each axis', 'Population total includes all trials and time'});
 legend(ax,cellstr(r.variables),'Interpreter','none','Location','best');
 ax=nexttile(layout,1+summarySpan,[1 summarySpan]); bar(ax,trialMeanSummary); xticks(ax,1:K);
+if isCV
+    hold(ax,'on'); errorbar(ax,1:K,trialMeanSummary,r.crossValidation.varianceSEM.pooledTrialMeanFraction,'k.');
+end
 xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Projected variance / population total');
 title(ax,{'Variance captured: condition means', 'Trials averaged; all time points pooled'});
 if p.showConditionContribution
@@ -216,6 +231,7 @@ axis(ax,'square'); xticks(ax,1:K); yticks(ax,1:K);
 xticklabels(ax,labels); yticklabels(ax,labels); set(ax,'TickLabelInterpreter','none');
 for k=1:K
     ax=nexttile(layout,summaryRows*cols+k); hold(ax,'on');
+    if isCV, drawBand(ax,time,axisPopulation(k,:),r.crossValidation.varianceSEM.axisFractionOfPopulationTotalByTime(k,:),[0 0.447 0.741]); end
     plot(ax,time,axisPopulation(k,:),'LineWidth',1.4);
     title(ax,"Variance captured: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Projected variance / population total');
 end
@@ -224,6 +240,7 @@ if p.showConditionContribution
     for k=1:K
         ax=nexttile(layout,(summaryRows+varianceRows)*cols+k); hold(ax,'on');
         for c=1:nc
+            if isCV, drawBand(ax,time,reshape(r.variance.conditionContributionByTime(k,:,c),1,[]),reshape(r.crossValidation.varianceSEM.conditionContributionByTime(k,:,c),1,[]),colors(c,:)); end
             plot(ax,time,reshape(r.variance.conditionContributionByTime(k,:,c),1,[]),'Color',colors(c,:));
         end
         title(ax,"Conditions: "+labels(k),'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Contribution / total');
@@ -235,14 +252,77 @@ end
 
 for v=1:nf
     F=r.factors(v); ax=nexttile(layout,separationStart+2*v-1);
-    if F.nAxes>0, bar(ax,1:F.nAxes,F.separationCapture); end
+    if F.nAxes>0
+        bar(ax,1:F.nAxes,F.separationCapture);
+        if isCV, hold(ax,'on'); errorbar(ax,1:F.nAxes,F.separationCapture,r.crossValidation.factorSEM(v).separationCapture,'k.'); end
+    end
     title(ax,"Separation: "+F.name,'Interpreter','none'); xlabel(ax,'Axis'); ylabel(ax,'Separation captured');
     ax=nexttile(layout,separationStart+2*v); hold(ax,'on');
-    for k=1:F.nAxes, plot(ax,time,F.separationCaptureByTime(k,:),'LineWidth',1.2); end
+    palette=lines(F.nAxes);
+    for k=1:F.nAxes
+        if isCV, drawBand(ax,time,F.separationCaptureByTime(k,:),r.crossValidation.factorSEM(v).separationCaptureByTime(k,:),palette(k,:)); end
+        plot(ax,time,F.separationCaptureByTime(k,:),'LineWidth',1.2,'Color',palette(k,:));
+    end
     title(ax,"Separation: "+F.name,'Interpreter','none'); xlabel(ax,'Time (s)'); ylabel(ax,'Separation captured');
     if F.nAxes>0, legend(ax,cellstr("Axis "+string(1:F.nAxes)),'Location','best'); end
 end
 finish(f,'variance');
+
+% Decoder figures use real single-neuron trials only.
+if isfield(r,'decoding')
+    d=r.decoding.mean; se=r.decoding.sem; valid=find(d.validFactor);
+    if ~isempty(valid)
+        [f,layout]=newFigure('Held-out decoding over time',numel(valid),numel(valid));
+        title(layout,{'Single-neuron LDA; training-only ranking for top-neuron groups', ...
+            'Shading = SEM across repeat means; balanced accuracy'});
+        palette=lines(numel(r.cfg.decoderTopFractions));
+        for v=reshape(valid,1,[])
+            ax=nexttile(layout); hold(ax,'on');
+            for q=1:numel(r.cfg.decoderTopFractions)
+                [~,j]=min(abs(d.fractions-r.cfg.decoderTopFractions(q)));
+                mu=d.singleTime(j,:,v); err=se.singleTime(j,:,v);
+                drawBand(ax,time,mu,err,palette(q,:));
+                plot(ax,time,mu,'Color',palette(q,:),'LineWidth',1.5, ...
+                    'DisplayName',sprintf('Mean single neuron: top %g%%',100*d.fractions(j)));
+            end
+            yline(ax,0.5,'k:','HandleVisibility','off'); ylim(ax,[0 1]);
+            xlabel(ax,'Time (s)'); ylabel(ax,'Held-out balanced accuracy');
+            title(ax,r.variables(v),'Interpreter','none'); legend(ax,'Location','best');
+        end
+        finish(f,'decodingTime');
+        if isfield(d,'neuronSummary')
+            [f,layout]=newFigure('Individual-neuron decoding accuracy',numel(valid),numel(valid));
+            title(layout,{'Each point = one neuron, sorted by its held-out accuracy', ...
+                'Ordering is descriptive; error bars = SEM across repeat means'});
+            animals=unique(r.neurons.animalIndex,'stable'); palette=lines(numel(animals));
+            for v=reshape(valid,1,[])
+                ax=nexttile(layout); hold(ax,'on');
+                [mu,order]=sort(d.neuronSummary(:,v),'descend');
+                err=se.neuronSummary(order,v); x=(1:numel(order))';
+                errorbar(ax,x,mu,err,'LineStyle','none','Color',[.75 .75 .75], ...
+                    'CapSize',0,'HandleVisibility','off');
+                for a=1:numel(animals)
+                    use=r.neurons.animalIndex(order)==animals(a);
+                    label=r.neurons.animalLabel(find(r.neurons.animalIndex==animals(a),1));
+                    scatter(ax,x(use),mu(use),12,palette(a,:),'filled','DisplayName',label);
+                end
+                yline(ax,0.5,'k:','HandleVisibility','off'); ylim(ax,[0 1]);
+                xlim(ax,[.5 numel(order)+.5]);
+                xlabel(ax,'Individual neuron rank (held-out accuracy)'); ylabel(ax,'Held-out balanced accuracy');
+                if strcmpi(r.variables(v),r.cfg.decoderChoiceVariable)
+                    title(ax,r.variables(v)+": fixed pre-choice frames (-200 ms to <0)",'Interpreter','none');
+                else
+                    title(ax,r.variables(v)+": full analysis window",'Interpreter','none');
+                end
+                legend(ax,'Location','best','Interpreter','none');
+            end
+            finish(f,'decodingNeurons');
+        else
+            warning('neuralGeometry:OldDecoder', ...
+                'This saved result lacks individual held-out neuron accuracies. Rerun the analysis for decodingNeurons.');
+        end
+    end
+end
 
 % Separate factor spaces, then same-rank cross-factor comparisons.
 if ~strcmp(p.trajectory,'none')
@@ -330,6 +410,15 @@ end
 end
 
 function band=projectionBand(r,k,rows,mode)
+% Marginalize each split BEFORE computing repeat SEM (conditions covary).
+if isfield(r,'crossValidation')&&r.crossValidation.enabled&&~strcmp(mode,'none')
+    cv=r.crossValidation; S=numel(cv.splits); Y=zeros(numel(r.time),S);
+    for s=1:S, Y(:,s)=reshape(mean(cv.splits{s}.projection.conditionMean(k,:,rows),3),[],1); end
+    Y=reshape(mean(reshape(Y,[],cv.nFolds,cv.nRepeats),2),[],cv.nRepeats);
+    band=std(Y,0,2)';
+    if strcmp(mode,'sem'), band=band/sqrt(cv.nRepeats); end
+    return;
+end
 % Marginal means weight conditions equally, even with unequal trial counts.
 switch mode
     case 'sem'
@@ -343,4 +432,10 @@ switch mode
         band=[];
 end
 band=reshape(band,1,[]);
+end
+
+function drawBand(ax,x,mu,se,color)
+x=reshape(x,1,[]); mu=reshape(mu,1,[]); se=reshape(se,1,[]);
+fill(ax,[x fliplr(x)],[mu-se fliplr(mu+se)],color,'FaceAlpha',0.18, ...
+    'EdgeColor','none','HandleVisibility','off');
 end

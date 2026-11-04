@@ -1,5 +1,53 @@
 TRIAL CURATION - GENERAL TRIAL SELECTION AND SESSION TRACKING
 
+MANUALLY IDENTIFIED TRIAL NUMBERS
+
+To split a numeric pool (e.g. every trial on the first T2E date) into the
+stimulus/action groups defined in cfg.conditionDef, enable grouping:
+  trialSel = ani.fn_prepareTrialData(cfg,'TrialNumbers',trialNumbers, ...
+      'GroupManualTrialsByCondition',true,'MakePlot',true);
+  trialSel = ani.fn_prepareNeuralData(trialSel);
+There is then one selection/neuralSelection entry per cfg.conditionDef entry,
+including empty groups. Only stimulus/action pairs determine group membership;
+day/task labels, responseTypes, correctness, miss and RT filters are bypassed.
+The numeric pool determines the allowed dates/periods. Session/tracking cfg
+still applies. Without this option a numeric vector makes one ManualTrials group.
+The same option is accepted by one-call manual fn_prepareNeuralData loading.
+
+  trialNumbers = [101 105 110 208]; % Row numbers in ani.trialInfo.
+  cfg = fn_defaultTrialSelectionConfig();
+  trialSel = ani.fn_prepareNeuralData(trialNumbers,'Config',cfg);
+  X = trialSel.byCondition.ManualTrials.neuralRaw; % neurons x time x trials
+  trials = trialSel.byCondition.ManualTrials.trialInfo;
+
+By default these are row indices across the animal's complete trialInfo table,
+not trialInSession. To match IDs in a named column instead, additionally pass
+'TrialNumberField','trialNum' (or your column name). That column must be unique
+across sessions. Manual lists replace day/task/stimulus/action, correctness, miss
+and RT filters. Unknown numbers and nonunique IDs raise errors.
+Repeated requested numbers select a trial once; source table order is used.
+The ordinary metadata eligibility checks, goodTracking checks, session ranking
+(cfg.trackingMethod), phase quotas and session-count cutoff still apply. Only
+sessions represented by requested trials are ranked. The chosen session subset
+can exclude requested trials; inspect sessionExcludedTrials and droppedTrialReport.
+Normalization, QC, neuron masks, neural arrays and trial provenance are unchanged.
+
+To inspect the tracking curve or adjust the session count before neural loading:
+  trialSel = ani.fn_prepareTrialData(cfg,'TrialNumbers',trialNumbers,'MakePlot',true);
+  % trialSel = fn_chooseTrackedSessions(trialSel,12); % Optional explicit cutoff.
+  trialSel = ani.fn_prepareNeuralData(trialSel);
+
+For multiple named groups, pass a cell array with one numeric vector per entry
+in cfg.conditionDef. These definitions supply labels only; membership comes
+entirely from the lists. Empty lists are allowed; groups may overlap.
+  cfg.conditionDef = cfg.conditionDef(1:2);
+  trialSel = ani.fn_prepareNeuralData({[101 105],[110 208]},'Config',cfg);
+
+Standalone equivalent (metadata inputs may also be metadata MAT filenames):
+  trialSel = fn_prepareNeuralData(trialNumbers,neuralFile, ...
+      'TrialInfo',trialInfo,'SessionInfoBeh',sessionInfoBeh,'Config',cfg);
+DataPath, ShowPlots and PlotSavePath work as with an existing selection struct.
+
 LOADING NEURAL DATA AFTER COPYING AN ANIMAL
 
   saved = load('D:\localData\zz153_AC_animal.mat','ani');

@@ -9,10 +9,20 @@ function [curated,figures] = fn_prepareTrialData(trialInfo,sessionInfoBeh,cfg,va
 % 'MakePlot',false: display RT and session/neuron tradeoff plots when true.
 % This argument is independent of fn_prepareNeuralData's ShowPlots option.
 % Plotting is controlled by function arguments, not cfg.makePlots.
+% 'TrialNumbers',ids: explicitly select trialInfo row numbers instead
+% of behavioral/RT filters. Vector -> one ManualTrials condition; cell array ->
+% one list per cfg.conditionDef (labels retained). Session/tracking cfg applies.
+% 'TrialNumberField','': use row numbers; set a column name to match IDs instead.
+% 'GroupManualTrialsByCondition',true: split a numeric manual pool by the
+% stimulus/action pairs in cfg.conditionDef; day/task/RT filters remain bypassed.
 if nargin<3 || isempty(cfg), cfg=fn_defaultTrialSelectionConfig(); end
 p=inputParser;
 addParameter(p,'MakePlot',false,@(x)islogical(x)&&isscalar(x));
+addParameter(p,'TrialNumbers',[],@(x)isnumeric(x)||iscell(x));
+addParameter(p,'GroupManualTrialsByCondition',false,@(x)islogical(x)&&isscalar(x));
+addParameter(p,'TrialNumberField','',@(x)ischar(x)||(isstring(x)&&isscalar(x)));
 parse(p,varargin{:});
+manualTrials=~any(strcmp('TrialNumbers',p.UsingDefaults));
 makePlot=p.Results.MakePlot;
 defaults=fn_defaultTrialSelectionConfig();
 names=fieldnames(defaults);
@@ -39,7 +49,13 @@ end
 conditionDef=cfg.conditionDef;
 % Lookahead preserves minimum quotas, then scores every remaining session.
 if strcmpi(cfg.trackingMethod,'lookahead'), cfg.matchRemaining=false; end
-selection=fn_selectTrialsByCondition(trialInfo,conditionDef,cfg);
+if manualTrials
+    [selection,conditionDef]=fn_selectManualTrials(trialInfo,p.Results.TrialNumbers, ...
+        conditionDef,p.Results.TrialNumberField,p.Results.GroupManualTrialsByCondition);
+    cfg.conditionDef=conditionDef;
+else
+    selection=fn_selectTrialsByCondition(trialInfo,conditionDef,cfg);
+end
 [selection,tracking]=fn_rankTrialSessions(selection,metadata,cfg,makePlot);
 
 curated=struct();

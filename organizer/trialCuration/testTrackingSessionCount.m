@@ -112,6 +112,7 @@ verifyEqual(t,c.tracking.numSessionsSelected,4);
 verifyEqual(t,sum(c.selectionQC.NSelected),4);
 verifyEqual(t,c.tracking.sessionCountSelection.method,"manual");
 c.cfg.sessionCountMethod='auto';
+c.cfg.autoSessionRange=[0.30 1.00]; % This test expects all six flat-curve sessions.
 c=fn_chooseTrackedSessions(c); % Reuse the complete curve, no file reload.
 verifyEqual(t,c.tracking.numSessionsSelected,6); % Flat neuron curve.
 c=fn_chooseTrackedSessions(c,5);

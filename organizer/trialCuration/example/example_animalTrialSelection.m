@@ -40,3 +40,13 @@ saved=load(ani.ops.animalObjectFile,'ani');
 ani=saved.ani;
 % ani.trialInfo is the stored trial table.
 % For explicit access to the full table: sessionInfo=ani.fn_loadSessionInfo();
+
+%% 5. Alternatively, load trials identified by hand.
+% Enter row numbers in ani.trialInfo, not trialInSession.
+% trialNumbers=[101 105 110 208];
+% trialSel=ani.fn_prepareNeuralData(trialNumbers,'Config',cfg);
+% X=trialSel.byCondition.ManualTrials.neuralRaw;
+% Session eligibility, tracking method and session-count cutoff still use cfg.
+% To inspect tracking before loading instead:
+% trialSel=ani.fn_prepareTrialData(cfg,'TrialNumbers',trialNumbers,'MakePlot',true);
+% trialSel=ani.fn_prepareNeuralData(trialSel);

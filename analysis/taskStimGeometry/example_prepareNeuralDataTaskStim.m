@@ -34,23 +34,24 @@ for i = 1:8                      % Conditions
 end
 
 
-%% Subspace and geometry: fully interleaved (Int) trials only.
+%% Select the four conditions for task/stimulus geometry.
 repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
-intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
-%intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
+%intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
+intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
 
 
 %intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
-intAct = cell(4,numel(allTrialsel));
+intAct = cell(numel(intNames),numel(allTrialsel));
+trialInfo = cell(size(intAct));
 for a = 1:numel(allTrialsel)
     names = string({allTrialsel{a}.neuralSelection.name});
     [found,rows] = ismember(intNames,names);
-    assert(all(found),'The selection must include all four Int condition definitions.');
+    assert(all(found),'The loaded selection must include every condition in intNames.');
     for k = 1:length(rows)
-        %trials = allTrialsel{a}.neuralSelection(rows(k)).trialInfoNeural;
         intAct{k,a} = tempAct{rows(k),a};
+        trialInfo{k,a} = allTrialsel{a}.neuralSelection(rows(k)).trialInfoNeural;
     end
 end

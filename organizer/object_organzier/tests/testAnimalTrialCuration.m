@@ -55,6 +55,21 @@ oneCall=ani.fn_prepareTrialData(cfg);
 verifyTrue(t,oneCall.neuralLoaded);
 end
 
+function testManualTrialNumbersNeuralLoad(t)
+[id,ops,S]=fn_fixture(t);
+fn_parsedFixture(ops,S);
+ani=Animal(id);
+cfg=fn_expertTrialSelectionConfig(); cfg.verbose=false;
+cfg.minSessionsPerStage=1; cfg.sessionCountMethod='fixed'; cfg.numSessions=1;
+numbers=[1 3];
+n=ani.fn_prepareNeuralData(numbers,'Config',cfg);
+verifyTrue(t,n.neuralLoaded);
+verifyEqual(t,n.animalID,string(id));
+verifyEqual(t,n.tracking.numSessionsSelected,1);
+verifyEqual(t,n.byCondition.ManualTrials.trialInfo.sourceTrialRow,numbers(1));
+verifyEqual(t,n.byCondition.ManualTrials.neuralRaw,S.dffChoice{1}(:,:,1));
+end
+
 function testLegacyTrialDataMigration(t)
 [id,ops,S]=fn_fixture(t);
 [sessionInfoBeh,trialInfo]=fn_getBehTrialInfo(S);

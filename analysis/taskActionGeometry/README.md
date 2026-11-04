@@ -17,6 +17,9 @@ conditions=table(["Int_S1_L";"Int_S2_R";"Int_S3_L";"Int_S4_R"], ...
 [cfg,plotCfg]=fn_neuralGeometryConfig();
 cfg.method='lda'; cfg.nAxes=3; cfg.normalization='none';
 cfg.timeWindow=[]; % All bins; or [start end] in seconds.
+cfg.crossValidate=true; cfg.cvFolds=5; cfg.cvRepeats=5;
+cfg.decoderTopFractions=[0.10 0.25]; % Single-neuron time courses.
+cfg.decoderWindowFrames=3; % Fixed -3:-1 at 15 Hz; input must be choice-aligned dffChoice.
 plotCfg.trialTypes=conditions.conditionName;
 plotCfg.trajectory='both';
 plotCfg.showConditionContribution=false;
@@ -37,13 +40,15 @@ identifiers, not continuous predictors.
    Animal neuron counts and trial counts may differ. Time alignment must match.
 2. An empty condition excludes its entire animal by default (`missingAnimal='exclude'`);
    use `'error'` to stop instead. Nonfinite neurons are removed globally across the
-   selected conditions/time/trials. At least two trials per cell are required.
+   selected conditions/time/trials. With five-fold CV, at least ten trials per cell
+   are required (two per test fold for variance). Incomplete animals are excluded
+   before splitting. Non-CV analysis requires two trials per cell.
 3. `time` explicitly supplies seconds, or time is `(frame-eventFrame)/frameRate`.
    `timeWindow` restricts fitting, normalization, metrics, and plots together.
 4. Normalization defaults to none. For each neuron, `zscore` subtracts one pooled
    mean and divides by one sample SD; `rms` divides by the square root of its
    pooled mean squared activity without centering. These pools contain **all raw
-   trials and selected time bins across conditions**. Larger trial counts affect
+   training trials and selected time bins across conditions** in CV mode. Larger trial counts affect
    normalization. Zero scales are replaced by one.
 5. Axes and variance metrics balance condition means, rather than giving conditions
    with more trials extra weight. Each factor's levels are equally weighted when
@@ -55,7 +60,156 @@ dimension. Cross-animal trial covariance is unknown and assumed zero. The defaul
 LDA covariance is diagonal; `cfg.covariance='withinAnimal'` permits full covariance
 blocks within each animal. Projected trial variance uses within-animal covariance
 even when the fitting metric is diagonal. This is a pooled pseudo-population,
-not an animal-replicate statistical test.
+not an animal-replicate statistical test. Decoding uses each neuron's own real
+held-out trials: there is no pooled population decoder or pseudo-trial sampling.
+
+## Repeated five-fold LDA and decoding (default)
+
+`method='lda'` now defaults to `crossValidate=true`, `cvFolds=5`, and
+`cvRepeats=5`: 25 training/test splits. `cvSeed=1` gives reproducible private
+random streams without changing MATLAB's global RNG. Each condition/animal is
+partitioned independently; **all time bins of a trial stay in the same fold**.
+Training normalization, moments, all residual-axis fits, and decoder thresholds
+are learned without the outer test trials. The original in-sample behavior is
+available with `cfg.crossValidate=false`; other axis methods remain descriptive.
+
+Each training model is evaluated on its held-out trials. Projections and every
+variance/separation metric are computed per split and then averaged. Variance
+fractions are the mean of split-wise ratios, not a ratio of pooled numerators.
+These are held-out descriptive variances, not prediction R-squared and not
+noise-corrected estimates: squared differences of finite test means retain noise.
+A rank is reported only if it is estimable in every split.
+
+For a metric $q_{rf}$ from repeat $r$, fold $f$:
+
+$$q_r=F^{-1}\sum_f q_{rf},\quad \bar q=R^{-1}\sum_r q_r,
+\quad SEM=SD(q_1,\ldots,q_R)/\sqrt R.$$
+
+The SEM describes sensitivity to repeated partitions of this dataset; repeated
+partitions are not independent subjects. It is **not** an animal-level or
+population-sampling confidence interval. Marginal projections are averaged
+across conditions *within each split* before computing SEM.
+
+Binary axes are oriented toward level 2 using training means. Higher residual
+ranks retain their training rank; unstable ranks may average to weak directions.
+For multiclass axes, signs align to the first training fit. Each split's weights
+are converted to raw neuron coordinates and unit normalized before averaging:
+
+$$v_s=\frac{w_s/\sigma_s}{\|w_s/\sigma_s\|},\qquad
+\bar v=S^{-1}\sum_s v_s.$$
+
+`meanWeights` stores this arithmetic average. `weights` and `weightsRaw` store
+its unit-normalized direction; similarity plots use these raw-coordinate mean
+directions. Averaging **does not preserve orthogonality** between residual ranks.
+The averaged vector is not used to score test data. The plotted projections are
+means of split projections in their respective training-normalized coordinates;
+applying the mean vector to raw data will not reproduce them. `conditionMeans`
+and the activity sanity figure remain full-data **raw** descriptive PSTHs.
+
+### Real-trial single-neuron decoding
+
+The population decoder has been removed. Every accuracy is evaluated on that
+neuron's **actual held-out trials from its own animal**, with the same five-fold
+partitions used by geometry. No trials are paired or sampled across animals.
+Binary variables are supported; multilevel variables retain geometry but skip
+decoding. Neuron identities/order must still match across conditions within each
+animal.
+
+**Choice (`decoderChoiceVariable='action'`):** the input must be choice-aligned
+`dffChoice`, with time zero at choice threshold. Fit the scalar neuron classifier
+using only frames **-3, -2, -1**, and summarize its test accuracy only on these
+frames. At 15 Hz the sample times are -200, -133.33 and -66.67 ms; frame zero and
+all post-choice frames are excluded. All three frames must be present in
+`cfg.timeWindow`. The code checks the time grid and errors on incompatible
+alignment/rates instead of silently choosing a different window. There is no
+search for a best window. Stimulus-aligned data cannot be used as if its zero were
+choice; realign it before calling this analysis.
+
+**Task and other binary variables:** fit using all selected time points, and
+average the test accuracies across the full selected window. For both choice and
+task, the summary averages per-frame accuracies, **not trial responses before
+classification**. Geometry axis fitting is unchanged: it still uses the full
+selected time window; choice single-neuron coefficients now use the narrower
+pre-choice window and need not match those geometry coefficients.
+
+With equal class priors, single-neuron LDA has
+
+$$w_j=(\mu_{2j}-\mu_{1j})/(s_j^2+\lambda),\qquad
+h_j=(\mu_{1j}+\mu_{2j})/2.$$
+
+Classify as level 2 when $w_j(x_j-h_j)>0$. The means and variances pool training
+trials and the variable's fitting frames, balancing classes and conditions
+within classes. Zero-score ties count as 0.5. Test accuracy similarly balances
+classes and their subconditions. Normalization parameters are learned only from
+training trials; positive affine single-neuron normalization does not change
+these scalar decisions.
+
+The `decodingNeurons` figure plots **one point per neuron**, ranked by its own
+mean held-out accuracy, with SEM across repeat means and color indicating its
+animal. This final sorting is descriptive: it is not independent evidence that
+the best displayed neuron will perform as well on a new dataset. No averaging
+across neurons is done in this figure.
+
+The existing `decodingTime` figure still plots mean single-neuron accuracy for
+`decoderTopFractions=[0.10 0.25]`. For these groups, `decoderInnerFolds=3` ranks
+neurons using inner-training CV only: pre-choice accuracy for choice, whole-window
+accuracy for task. The resulting fixed neuron group is evaluated across the outer
+test time course. The choice classifier's fixed pre-choice threshold is also
+applied at other times to show temporal generalization; the **choice summary**
+only uses pre-choice frames. This top-group plot and its ranking are separate
+from the descriptive sorting in the individual-neuron plot.
+
+### Investigating low accuracy despite selective mean traces
+
+The previous implementation fitted one decision threshold over the entire time
+window for every variable, and ranked choice neurons by whole-window accuracy.
+A short-lived pre-choice response could therefore be diluted by baseline and
+other periods. Choice fitting/ranking now use only the fixed pre-choice frames.
+
+A second issue can persist, especially for task: the baseline of both class
+responses may change strongly over time. One scalar threshold pooled across time
+can put *both* classes on the same side at a given time even when their means
+are clearly separated there. To diagnose this, every split also fits a separate
+single-neuron threshold/direction **at each time bin using training trials only**:
+
+- `decoding.mean.neuronTime`: fixed-window classifier, neuron x time x variable.
+- `decoding.mean.neuronSummary`: each neuron's accuracy in the stated summary window.
+- `decoding.mean.timeResolvedNeuronTime` / `timeResolvedNeuronSummary`: held-out
+  diagnostic with per-time-bin fits. A substantial increase indicates a cost of
+  using one fixed threshold/direction across time. This diagnostic does not replace
+  the main fixed-window metric or change the geometry axes.
+
+Synthetic tests reproduce 50% fixed-threshold versus near-perfect time-specific
+accuracy with a strong shared temporal baseline and perfectly separated classes.
+That establishes a possible mechanism, not the cause of an individual animal's
+scores. Trial-averaged traces also conceal trial-to-trial overlap. Finally, a
+neuron selective for S1 alone may distinguish L/R in T1 but not in T2; averaging
+across both tasks can weaken its action accuracy, and opposite preferences can
+cancel. Thus visible condition selectivity is not necessarily robust marginal
+choice/task decoding.
+
+```matlab
+geometry.decoding.neuronTable  % Animal, original neuron row, accuracy, SEM, rank,
+                              % and timeResolvedAccuracy for the same cell.
+geometry.decoding.mean.neuronSummary       % neuron x variable
+geometry.decoding.mean.neuronTime          % neuron x time x variable
+geometry.decoding.displayOrder             % neuron indices sorted for each variable
+```
+
+`crossValidation.assignments{condition,animal}` is original trial x repeat;
+entries give the held-out fold. `crossValidation.models{s}` stores training
+weights, scaling and axis labels. `crossValidation.splits{s}` stores held-out
+projection/variance/factor metrics. `crossValidation.varianceSEM` and `factorSEM`
+contain plotted repeat SEMs. `decoding.splits{s}` stores actual test `sourceTrial`
+indices, training ranks, thresholds, fit/summary window indices, and per-neuron
+accuracies. `decoding.mean` and `.sem` aggregate these over repeats.
+`decoderFractions` and `decoderPseudoTrials` are accepted but ignored for
+compatibility with saved configuration structures; no population curves are made.
+Old saved results lack held-out accuracies for individual neurons: rerun analysis
+rather than trying to recover them from old top-group averages.
+
+Training-only top-group selection follows
+[nested CV](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html).
 
 ## Axis fitting: math and implementation
 
@@ -218,7 +372,8 @@ $[u_k^\top(\mu_L(t)-\mu_R(t))]^2/4$.
 For time-resolved metrics, summary fractions (fields without `ByTime`) are **mean numerator / mean denominator**,
 not the mean of pointwise fractions. Zero denominators produce NaN. Interaction
 variance is not assigned to individual main effects. All estimates are descriptive,
-with no finite-sample noise correction, bootstrap CI, or held-out validation.
+with no finite-sample noise correction or bootstrap CI. In CV mode these
+calculations use held-out trials separately for each training axis.
 
 For separation capture, let $\delta_l(t)$ be a factor level's neuron-space mean
 minus the equal-level mean. Axis $u_k$ captures
@@ -232,21 +387,24 @@ denominator using `fn_plotNeuralGeometry`; no neural-data reload or axis refit i
 
 `plotCfg.similarity` supports:
 
-- `'correlation'` (default): Pearson correlation of weight columns after centering
+- `'correlation'`: Pearson correlation of weight columns after centering
   across neurons. Orthogonal axes need not have zero centered correlation.
-- `'cosine'`: $u_i^\top u_j$ for unit-length weights; orthogonal axes give zero.
+- `'cosine'` (default): $u_i^\top u_j$ for unit-length weights; orthogonal axes give zero.
 - `'angle'`: $\cos^{-1}(|u_i^\top u_j|)$ in degrees; parallel/antiparallel is 0°,
   orthogonal is 90°. The absolute value removes sign orientation.
 
 Correlation/cosine use blue = -1, white = 0, red = +1. Constant-weight Pearson
 correlations are undefined and gray. These compare **weights**, not activity-trace
-correlations. Similarity is measured in the analyzed, optionally normalized coordinates.
+correlations. In CV mode similarity uses the mean raw-coordinate unit directions;
+non-CV mode uses the analyzed, optionally normalized coordinates.
 
 | Figure | Panels |
 | --- | --- |
 | `activity` | Per-condition neuron PSTHs with one shared peak-time ordering and color scale; mean population traces marginalized by variable, with SEM across neuron-wise trial means. |
-| `projections` | Marginalized traces and optional `trialTypes` condition traces on each axis, with trial-based SEM shading by default. `projectionError='sd'` shows trial spread; `'none'` hides bands. |
+| `projections` | Marginalized traces and optional `trialTypes` condition traces on each axis, with repeat-mean SEM shading in CV mode. `projectionError='sd'` shows SD of repeat means; `'none'` hides bands. |
 | `variance` | Adjacent variable-separation / pooled population total and condition-mean total variance summaries, per-time variance capture, weight similarity, and separation capture. Condition-contribution heatmap/time courses are optional (`showConditionContribution=false` by default). |
+| `decodingTime` | Held-out mean single-neuron accuracy for training-ranked top 10% and 25%, one panel per binary variable. |
+| `decodingNeurons` | Individual neurons ranked by held-out accuracy, colored by animal, with repeat SEM. Choice uses fixed pre-choice frames -3:-1; task uses the full window. |
 | `trajectories` | With `trajectory='both'`: separate action/task 3D views, all within-variable 2D pairs among axes 1–3, then same-rank action/task pairs. Extra variables extend the layout. Missing axes skip unavailable panels. |
 
 `trajectoryAxes=[]` uses the factor-based layout; an explicit three-index vector
@@ -254,6 +412,8 @@ overrides it with one custom triplet. These projections may use nonorthogonal
 cross-variable axes and need not preserve distances. Population SEM is descriptive
 across neurons, **not** an animal-level confidence interval.
 
+**Legacy non-CV projection uncertainty** (`crossValidate=false`) follows the
+formula below. CV mode instead uses repeat SEM as described above.
 Projection uncertainty is separate from the neuron-wise SEM in the activity
 sanity plots. Set `plotCfg.projectionError='sem'` (default), `'sd'`, or `'none'`.
 For animal $a$, condition $c$, and fixed axis $k$, project the actual trials
@@ -288,7 +448,7 @@ save('geometry.mat','geometry'); % Graphics are separate.
 ## Output and implementation map
 
 `geometry.weights` is pooled neuron × axis; `neurons` maps rows to original animal
-and neuron IDs; `axisInfo` maps columns to variable/rank. `weightsRaw` and
+and neuron IDs; `axisInfo` maps columns to variable/rank. In **non-CV mode**, `weightsRaw` and
 `projectionOffset` give the equivalent transform of raw input:
 `weightsRaw' * rawActivity + projectionOffset`. `conditionMeans` is neuron × time ×
 condition; `projection.conditionMean` is axis × time × condition.
@@ -298,8 +458,10 @@ counts. Original trial arrays and figure handles are not retained in the result.
 PNG paths are in `plotFiles`; visible figure handles are the second output only.
 
 - `fn_neuralGeometryConfig.m`: analysis and plot defaults.
-- `fn_analyzeNeuralGeometry.m`: validation, normalization, pooled moments, constrained
-  axis fitting, projections, and time-resolved metrics; local helpers keep the API small.
+- `fn_analyzeNeuralGeometry.m`: public entry point and CV/descriptive dispatch.
+- `fn_fitNeuralGeometry.m`: internal training fit or fixed-model held-out evaluation.
+- `fn_crossvalidateNeuralGeometry.m`: stratified repeated folds, aggregation, provenance.
+- `fn_decodeNeuralGeometry.m`: inner-CV ranking/window selection and outer-test decoding.
 - `fn_plotNeuralGeometry.m`: independent rendering and hidden PNG export.
 - `example_neuralGeometry.m`: editable use with `intAct`/`tempAct`.
 - `tests/testNeuralGeometry.m`: synthetic checks for pooling, raw transforms,
@@ -307,6 +469,7 @@ PNG paths are in `plotFiles`; visible figure handles are the second output only.
 - `legacy/`: previous analysis implementation; not needed for the current API.
 
 ```matlab
-results=runtests('analysis/taskActionGeometry/tests/testNeuralGeometry.m');
+results=runtests({'analysis/taskActionGeometry/tests/testNeuralGeometry.m', ...
+    'analysis/taskActionGeometry/tests/testCrossvalidatedGeometry.m'});
 assertSuccess(results);
 ```

@@ -5,6 +5,8 @@ cfg.conditionDef=[];
 %% Trial filters shared by all conditions.
 cfg.requireCorrect = false;
 cfg.excludeMiss = false;
+cfg.useRTFilter = true;
+cfg.minTrials = 10;
 
 cfg.neuralField = 'dffChoice';
 cfg.requireGoodTracking = true;

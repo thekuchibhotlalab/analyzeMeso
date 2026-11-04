@@ -24,7 +24,7 @@ cfg.conditionDef = [ ...
     fn_trialCondition("Int_S4_R", "Int", [],   4, 2)];
 
 % RT filtering can be disabled for raw-data curation.
-cfg.minTrials = 10;
+cfg.minTrials = 2;
 cfg.useRTFilter = true;
 cfg.RTRange = [0.2 0.65];
 

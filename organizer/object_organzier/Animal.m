@@ -122,8 +122,26 @@ classdef Animal
             % Second output contains figure handles, separate from saved data.
             % Optional: 'ShowPlots',false, 'PlotSavePath','' (PNG folder).
             % 'DataPath': local MAT file or folder overriding ops.sessionInfoName.
+            % Or pass trialInfo row numbers (vector/cells) and 'Config',cfg.
+            % 'TrialNumberField' optionally matches IDs in a named column.
             fn_animalCurationPath();
-            if isfield(curated,'animalID')
+            if isnumeric(curated)||iscell(curated)
+                % Forward lightweight metadata; standalone loader runs selection.
+                varargin=[varargin,{'TrialInfo',obj.trialInfo, ...
+                    'SessionInfoBeh',obj.sessionInfoBeh}];
+                p=inputParser;
+                p.KeepUnmatched=true;
+                addParameter(p,'Config',[]);
+                parse(p,varargin{:});
+                cfg=p.Results.Config;
+                if isempty(cfg), cfg=fn_defaultTrialSelectionConfig(); end
+                cfg.animalID=string(obj.ID);
+                % Append the authoritative config after removing the user's copy.
+                names=varargin(1:2:end);
+                idx=find(strcmpi(names,'Config'));
+                for j=fliplr(idx), varargin(2*j-1:2*j)=[]; end
+                varargin=[varargin,{'Config',cfg}];
+            elseif isfield(curated,'animalID')
                 assert(string(curated.animalID)==string(obj.ID),'Animal:SelectionID', ...
                     'These selected trials belong to a different animal/area.');
             else
