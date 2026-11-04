@@ -19,6 +19,10 @@ cfg.frameRate=15; cfg.eventFrame=31;
 % cfg.animalLabels=string(animals);
 plotCfg.trialTypes=conditions.conditionName;
 
+%plotCfg.savePath = 'B:\analysis\T2_firstDayComparison\neuralGeometry';
+%plotCfg.visible = false; % Save without displaying; true to also display
+%plotCfg.prefix = 'firstDayT2'; % Optional filename prefix
+
 plotCfg.trajectory='both';     % 3D plus three 2D projections of the same axes.
 % plotCfg.visible=false; plotCfg.savePath='B:\analysis\neuralGeometry';
 [geometry,figures]=fn_analyzeNeuralGeometry(intAct,conditions,cfg,plotCfg);
@@ -30,6 +34,7 @@ neuronMap=geometry.neurons;    % Animal and original input row for every neuron.
 % geometry.projection.conditionMean is axis x time x condition.
 % Save geometry alone: figures and original trial arrays are separate.
 
+%save([plotCfg.savePath filesep 'geometry.mat'],'geometry');
 %% More conditions/variables: use tempAct and a matching table instead.
 % Example for rows T1_S1_L,T1_S2_R,T2_S3_L,T2_S4_R,Int_S1_L,...,Int_S4_R:
 % conditions=table(["T1_S1_L";"T1_S2_R";"T2_S3_L";"T2_S4_R"; ...

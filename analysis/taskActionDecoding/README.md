@@ -20,7 +20,7 @@ conditions=table(string(intNames(:)),["L";"R";"L";"R"], ...
     'VariableNames',{'conditionName','action','task'});
 [cfg,p]=fn_taskActionDecodingConfig();
 cfg.animalLabels=string(animals);
-cfg.topFractions=.05:.05:1;
+cfg.removeTopFractions=0:.05:.95; % Start with all; remove best 5%, 10%, ... 95%.
 [decoding,figures]=fn_analyzeTaskActionDecoding(intAct,conditions,cfg,p);
 ```
 
@@ -64,7 +64,7 @@ map the retained trials to their original input conditions and trial indices.
   original input neuron row, not by rank or independently sorted accuracy.
 - `taskAccuracy`: four single-neuron accuracy histograms, one per task window.
 - `populationSVM`: six panels with a separate held-out SVM subset curve per
-  animal. X is the top-neuron percentage; set `p.populationXAxis='count'` for the
+  animal. X is the percentage of top-ranked neurons removed; set `p.populationXAxis='count'` for the
   actual number. Shading is SEM across repeated CV estimates.
 
 Histogram/scatter plots concatenate cell results after fitting independently per
@@ -113,23 +113,33 @@ test scores. Its maximum is optimistic as an estimate of a prospectively chosen
 best neuron, especially among many neurons. Population performance below that
 maximum does not itself establish failure of Gaussian assumptions.
 
-## Population SVM and top-neuron subsets
+## Population SVM after removing top-ranked neurons
 
 Within each outer training set, use three-fold **inner CV** to rank individual
-neurons by balanced LDA accuracy. For every requested fraction, select
-`ceil(fraction*nNeurons)` and fit a new linear SVM using all outer-training trials
-and only those columns. SVM features are standardized using outer-training means
+neurons by balanced LDA accuracy. Start with all neurons, then remove the best
+5%, 10%, ..., 95% by default (`cfg.removeTopFractions=0:.05:.95`). At fraction f,
+remove `floor(f*nNeurons)` highest-ranked columns and fit a new linear SVM using
+all outer-training trials and the remaining columns. At least one neuron remains;
+100% removal is undefined. SVM features are standardized using outer-training means
 and SDs, then the same transform is applied to test trials. Class priors are
 uniform, giving the two classes equal aggregate weight despite unequal trial
 counts. The fixed `BoxConstraint=1` is configurable and is not optimized on test
 accuracy. Details of class weighting are in the official
 [fitcsvm documentation](https://www.mathworks.com/help/stats/fitcsvm.html).
 
-All-neuron SVM is always included, even if `TopFractions` omits 1. The same outer
+All-neuron SVM is always included as the 0%-removed baseline. The same outer
 test observations evaluate every subset. Subsets are nested within a split;
 their identities can vary between splits. When two percentages select the same
 number of neurons, the fitted model is reused. No model is saved as a bulky SVM
 object: weights and intercepts are converted back to raw activity coordinates.
+
+`decoder.popAcc` and `popW` still refer to the all-neuron SVM, now the first
+population entry. `decoder.population.allNeuronIndex` identifies this entry.
+Single-neuron accuracies/weights continue to use scalar LDA. Every population
+point uses a refitted linear SVM, including a one-feature endpoint if reached.
+Set `cfg.removeTopFractions=[]` to restore the earlier best-neuron inclusion
+curve controlled by `cfg.topFractions`. Calls to the shared `fn_runDecoder`
+without `RemoveTopFractions` retain their original behavior.
 
 $$z=(x-\mu_{train})/\sigma_{train},\quad
 score=z^T\beta+b=x^Tw_{raw}+b_{raw},$$
@@ -146,6 +156,8 @@ ignore useless inputs; a finite-sample fitted SVM need not achieve that ideal.
 ```matlab
 decoding.neurons     % Per-cell held-out accuracy/SEM, LDA weight/threshold, full SVM weight.
 decoding.population  % Per-animal/per-window subset accuracy and SEM.
+% removedFraction/nRemoved: requested removal percentage and actual removed count.
+% fraction/nNeurons: retained fraction and actual remaining count.
 decoding.choicePairs % Matched cell accuracy in T1 and T2.
 decoding.audit       % Trial counts, neuron counts, per-comparison inclusion/reason.
 d=decoding.fits{1,1}.decoder;
@@ -170,7 +182,7 @@ Neurons with nonfinite reduced responses are excluded
 per comparison, with the original row mapping retained. At least K trials per
 class are required for K-fold CV.
 
-`fn_runDecoder` name-value options: `Repeats`, `Seed`, `InnerFolds`, `TopFractions`,
+`fn_runDecoder` name-value options: `Repeats`, `Seed`, `InnerFolds`, `TopFractions`, `RemoveTopFractions`,
 `BoxConstraint`, `Ridge`, `Shuffle`, `Verbose`. `Shuffle=false` is the default to
 avoid doubling runtime. When enabled, train/test pools stay disjoint and labels
 are permuted independently within each pool while retaining both class counts.
@@ -181,7 +193,7 @@ restoration of the global RNG make calls reproducible without altering your RNG.
 This analysis requires **MATLAB Statistics and Machine Learning Toolbox** for
 `fitcsvm`, plus the updated `ziyiFunction/analysis/fn_runDecoder.m` on your path.
 There is no UMAP dependency. The large default grid is six comparisons x animals
-x 25 outer splits x 20 fractions; reduce `topFractions`/`repeats` for a quick check.
+x 25 outer splits x 20 fractions; reduce `removeTopFractions`/`repeats` for a quick check.
 
 The separate [taskActionGeometry](../taskActionGeometry/README.md) code handles
 axis projections. Set its `cfg.decode=false` for projection/variance analysis

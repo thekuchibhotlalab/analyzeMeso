@@ -16,7 +16,7 @@ cfg.umap.normalization='none';       % Already normalized by cfg.response, never
 
 plotCfg.makePlot=true;
 plotCfg.visible=true;
-plotCfg.savePath='';
+plotCfg.savePath='';            % Save PNG + editable FIG files when nonempty.
 plotCfg.prefix='earlyLearningEmbedding';
 plotCfg.pointSize=30;
 plotCfg.connectBins=true;            % Lines within each stimulus x response-period trajectory.

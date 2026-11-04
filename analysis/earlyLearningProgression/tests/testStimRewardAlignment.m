@@ -67,6 +67,9 @@ verifyNumElements(t,fieldnames(figures),5); % Two scatter pages, correlation, tw
 verifyTrue(t,isfield(figures,'pooledEarlyTrials_S1'));
 verifyTrue(t,isfield(figures,'pooledEarlyTrials_S2'));
 verifyTrue(t,all(structfun(@(file)isfile(file),files)));
+for key=fieldnames(files)'
+    file=files.(key{1}); verifyTrue(t,isfile([file(1:end-4) '.fig']));
+end
 verifyEqual(t,findall(groot,'Type','figure'),before);
 end
 function testSeparateStimuliAndAnimals(t)

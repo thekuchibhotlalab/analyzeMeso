@@ -82,6 +82,38 @@ d=fn_runDecoder(randn(stream,100,12),randn(stream,160,12),.8, ...
     'Repeats',2,'TopFractions',[1/12 .5 1],'Seed',4);
 verifyLessThan(t,max(abs(d.population.accuracy(:,2)-.5)),.15);
 end
+function testRemoveBestNeuronsUsesTrainingRankingAndSvm(t)
+A=t.TestData.A; B=t.TestData.B;
+opts=[t.TestData.options,{'RemoveTopFractions',[0 .25 .5 .75]}];
+d=fn_runDecoder(A,B,.8,opts{:});
+verifyEqual(t,d.population.method,'linear SVM');
+verifyEqual(t,d.population.removedFractions,[0 .25 .5 .75]);
+verifyEqual(t,d.population.nRemoved,[0 1 2 3]);
+verifyEqual(t,d.population.nNeurons,[4 3 2 1]);
+verifyEqual(t,d.popAcc,d.population.accuracy(1,:));
+verifyEqual(t,d.popW,d.population.weights(:,1));
+for q=1:4
+    chosen=d.cv.ranking(q:end,1); w=d.population.weightsBySplit(:,q,1);
+    verifyEqual(t,w(d.cv.ranking(1:q-1,1)),zeros(q-1,1));
+    expected=0; data={A,B};
+    for cls=1:2
+        held=d.cv.foldAssignments{cls}(:,1)==1;
+        margin=data{cls}(held,:)*w+d.population.biasBySplit(q,1);
+        if cls==2, margin=-margin; end
+        expected=expected+.5*mean(double(margin>0)+.5*double(margin==0));
+    end
+    verifyEqual(t,d.population.accuracyBySplit(q,1,2),expected,'AbsTol',1e-12);
+    verifyEqual(t,nnz(ismember(d.cv.ranking(:,1),chosen)),5-q);
+end
+% Test observations must not determine removal, weights, or LDA parameters.
+A(d.cv.foldAssignments{1}(:,1)==1,:)=1000;
+B(d.cv.foldAssignments{2}(:,1)==1,:)=-1000;
+altered=fn_runDecoder(A,B,.8,opts{:});
+verifyEqual(t,altered.cv.ranking(:,1),d.cv.ranking(:,1));
+verifyEqual(t,altered.population.weightsBySplit(:,:,1),d.population.weightsBySplit(:,:,1),'AbsTol',1e-12);
+verifyEqual(t,altered.cellWBySplit(:,1),d.cellWBySplit(:,1));
+end
+
 function testAccuracyOnlyAnalysisAndPlots(t)
 [cfg,p]=fn_taskActionDecodingConfig(); cfg.repeats=2; cfg.topFractions=[.25 1]; cfg.verbose=false;
 cfg.animalLabels=["mouseA","mouseB"]; p.makePlot=false;
@@ -105,6 +137,9 @@ expected=fn_runDecoder(A,B,.8,'Repeats',2,'TopFractions',[.25 1],'Seed',cfg.seed
 verifyEqual(t,fit.decoder.cellAcc,expected.cellAcc,'AbsTol',1e-12);
 verifyEqual(t,fit.sourceClass1.trialInCondition,(1:size(A,1))');
 verifyEqual(t,r.fits{6,1}.comparison.frames,16:37);
+verifyEqual(t,r.fits{1,1}.decoder.population.removedFractions,cfg.removeTopFractions);
+verifyTrue(t,all(diff(r.population.nNeurons(r.population.animalIndex==1 & ...
+    r.population.comparison=="choice_T1"))<=0));
 % Input counts are [13 16 19 22]: task decoding must retain [13 13 19 19].
 verifyEqual(t,r.fits{3,1}.trialBalance.nAvailable,[13;16;19;22]);
 verifyEqual(t,r.fits{3,1}.trialBalance.nSelected,[13;13;19;19]);
@@ -128,7 +163,15 @@ p.makePlot=true; p.visible=false; p.savePath=folder.Folder;
 before=findall(groot,'Type','figure'); [figures,files]=fn_plotTaskActionDecoding(r,p);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 verifyEqual(t,sort(fieldnames(files)),{'choiceAccuracy';'populationSVM';'taskAccuracy'});
-for key=fieldnames(files)', verifyTrue(t,isfile(files.(key{1}))); verifyEmpty(t,figures.(key{1})); end
+for key=fieldnames(files)'
+    file=files.(key{1}); verifyTrue(t,isfile(file)); verifyEmpty(t,figures.(key{1}));
+    verifyTrue(t,isfile([file(1:end-4) '.fig']));
+end
+reopened=openfig([files.populationSVM(1:end-4) '.fig'],'new','invisible');
+cleanup=onCleanup(@()close(reopened));
+axesList=findall(reopened,'Type','axes');
+verifyTrue(t,all(arrayfun(@(ax)strcmp(ax.XLabel.String,'Top-ranked neurons removed (%)'),axesList)));
+clear cleanup
 p.populationXAxis='count'; p.prefix='counts'; fn_plotTaskActionDecoding(r,p);
 % Balancing is deterministic and does not modify the caller's random stream.
 p.makePlot=false; beforeRng=rng;

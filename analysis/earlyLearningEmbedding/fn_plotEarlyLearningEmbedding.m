@@ -59,6 +59,7 @@ if ~isempty(p.savePath)
     if ~isfolder(p.savePath), mkdir(p.savePath); end
     file=fullfile(p.savePath,[prefix '_umap.png']);
     exportgraphics(fig,file,'Resolution',150); files.umap=file;
+    savefig(fig,[file(1:end-4) '.fig']);
 end
 if p.visible, figures.umap=fig; else, figures.umap=[]; end
 if p.showPCA && isfield(r,'pca')
@@ -111,6 +112,7 @@ file='';
 if ~isempty(p.savePath)
     if ~isfolder(p.savePath), mkdir(p.savePath); end
     file=fullfile(p.savePath,[prefix '_pca.png']); exportgraphics(fig,file,'Resolution',150);
+    savefig(fig,[file(1:end-4) '.fig']);
 end
 if p.visible, handle=fig; else, handle=[]; end
 end

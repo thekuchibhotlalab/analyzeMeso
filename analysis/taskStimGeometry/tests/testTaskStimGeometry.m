@@ -101,6 +101,9 @@ before=findall(groot,'Type','figure'); p.makePlot=true; p.visible=false; p.saveP
 [figures,files]=fn_plotTaskStimGeometry(r,p);
 verifyTrue(t,isfile(files.projections)); verifyEmpty(t,figures.projections);
 verifyTrue(t,isfile(files.similarity)); verifyEmpty(t,figures.similarity);
+for key=fieldnames(files)'
+    file=files.(key{1}); verifyTrue(t,isfile([file(1:end-4) '.fig']));
+end
 verifyEqual(t,findall(groot,'Type','figure'),before);
 for q=1:4, A{q,1}(:)=1; A{q,2}(:)=1; end
 r=fn_analyzeTaskStimGeometry(A,C,c,struct('makePlot',false),T);

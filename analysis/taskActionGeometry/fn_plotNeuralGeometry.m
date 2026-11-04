@@ -404,6 +404,7 @@ end
         if ~isempty(folder)
             file=fullfile(folder,[prefix '_' name '.png']);
             exportgraphics(fig,file,'Resolution',150); files.(name)=file;
+            savefig(fig,[file(1:end-4) '.fig']);
         end
         if p.visible, figures.(name)=fig; else, figures.(name)=[]; end
     end

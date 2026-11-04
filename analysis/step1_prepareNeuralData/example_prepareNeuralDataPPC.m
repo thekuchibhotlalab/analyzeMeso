@@ -1,9 +1,14 @@
-%% load AC animal
 clear;
 aniPath = 'B:\animal';
 
-animals={'zz151_AC1','zz153_AC','zz159_AC','zz170_AC1','zz170_AC2','zz180_AC'};
+animals = {'zz153_PPC','zz159_PPC',...
+           'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
+%%
+clear;
+aniPath = 'B:\animal';
 
+animals = {'zz153_PPC','zz159_PPC',...
+           'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
 %% Load animal Data
 allAni = {};
 for i = 1:length(animals)
@@ -11,7 +16,37 @@ for i = 1:length(animals)
     allAni{i} = ani;
 end
 
-%% load data according to cfg. For AC, load dffStim for stimulus-aligned act
+%% find only the first day of t2
+cfg = fn_T2E_Int_TrialSelectionConfig();
+
+% Four stimulus/action combinations, accepting all task labels.
+cfg.conditionDef = [
+    fn_trialCondition("T2E_S1_L","T2E",[],1,1);
+    fn_trialCondition("T2E_S2_R","T2E",[],2,2);
+    fn_trialCondition("T2E_S3_L","T2E",[],3,1);
+    fn_trialCondition("T2E_S4_R","T2E",[],4,2)
+];
+
+% A single day may contain fewer sessions than the preset's minimum of four.
+cfg.minSessionsPerStage = 1;
+
+allTrialsel = {};
+for i = 1:length(animals)
+    T = allAni{i}.trialInfo;
+    firstDate = min(T.date(strcmpi(string(T.dayLabel),'T2E')));
+
+    trialNumbers = find(T.date == firstDate); % All task/day labels on that date
+
+    trialSel = allAni{i}.fn_prepareTrialData(cfg, ...
+        'TrialNumbers',trialNumbers, ...
+        'GroupManualTrialsByCondition',true, ...
+        'MakePlot',true);
+    allTrialsel{i} = allAni{i}.fn_prepareNeuralData(trialSel);
+    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel,'DataPath', putYourDataPath);
+end
+
+
+%% load data accoridng to cfg
 cfg = fn_interleaveTrialSelectionConfig();
 allTrialsel = {};
 for i = 1:length(animals)
@@ -21,9 +56,18 @@ for i = 1:length(animals)
 end
 %save('B:\analysis\trialSelection\interleavedAnalysis\allTrialsel.mat','allTrialsel','-v7.3')
 
+%% load data accoridng to cfg
+cfg = fn_T2E_Int_TrialSelectionConfig();
+allTrialsel = {};
+for i = 1:length(animals)
+    trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);
+    allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel, 'PlotSavePath', 'B:\analysis\trialSelection');
+    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel,'DataPath', putYourDataPath);
+end
+%save('allTrialsel.mat','allTrialsel')
 %%
-tempAct = cell(4, numel(allTrialsel));
-for i = 1:4                      % Conditions
+tempAct = cell(8, numel(allTrialsel));
+for i = 1:8                      % Conditions
     for a = 1:numel(allTrialsel)   % Animals
         X = allTrialsel{a}.neuralSelection(i).neuralRaw;
 
@@ -40,8 +84,8 @@ addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
 %intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
-%intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
-intNames = ["T2E_S1_L","T2E_S2_R","T2E_S3_L","T2E_S4_R"];
+intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
+%intNames = ["T2E_S1_L","T2E_S2_R","T2E_S3_L","T2E_S4_R"];
 
 
 %intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];

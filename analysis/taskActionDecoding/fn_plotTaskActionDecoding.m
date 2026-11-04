@@ -55,13 +55,19 @@ else
 end
 finish(fig,'taskAccuracy');
 
+removing=ismember('removedFraction',r.population.Properties.VariableNames)&& ...
+    any(isfinite(r.population.removedFraction));
 [fig,layout]=makeFigure('Within-animal population SVM',ceil(numel(cmp)/2),2);
 for k=1:numel(cmp)
     ax=nexttile(layout); hold(ax,'on');
     for a=1:numel(r.animalLabels)
         rows=r.population.animalIndex==a & r.population.comparison==cmp(k).name;
         A=r.population(rows,:); if isempty(A), continue; end
-        if strcmp(p.populationXAxis,'percent'), x=100*A.fraction; else, x=A.nNeurons; end
+        if removing
+            if strcmp(p.populationXAxis,'percent'), x=100*A.removedFraction; else, x=A.nRemoved; end
+        else
+            if strcmp(p.populationXAxis,'percent'), x=100*A.fraction; else, x=A.nNeurons; end
+        end
         % Repeated percentages can map to the same count for small populations.
         [x,ix]=unique(x,'stable'); mu=A.accuracy(ix); se=A.sem(ix);
         fill(ax,[x;flipud(x)],[mu-se;flipud(mu+se)],colors(a,:), ...
@@ -70,11 +76,17 @@ for k=1:numel(cmp)
             'DisplayName',r.animalLabels(a));
     end
     yline(ax,.5,'k:','HandleVisibility','off'); ylim(ax,[0 1]);
-    if strcmp(p.populationXAxis,'percent'), xlabel(ax,'Top neurons selected (%)'); else, xlabel(ax,'Number of best neurons selected'); end
+    if removing
+        if strcmp(p.populationXAxis,'percent'), xlabel(ax,'Top-ranked neurons removed (%)'); else, xlabel(ax,'Number of top-ranked neurons removed'); end
+    else
+        if strcmp(p.populationXAxis,'percent'), xlabel(ax,'Top neurons selected (%)'); else, xlabel(ax,'Number of best neurons selected'); end
+    end
     ylabel(ax,'Held-out balanced accuracy'); title(ax,cmp(k).name,'Interpreter','none');
     if k==1, legend(ax,'Location','best','Interpreter','none'); end
 end
-title(layout,{'Linear SVM refitted per animal and neuron subset', ...
+caption='Linear SVM refitted per animal and neuron subset';
+if removing, caption='Linear SVM on remaining neurons: all neurons, then remove the best'; end
+title(layout,{caption, ...
     'Training-only neuron ranking; real test trials; SEM across repeated CV'});
 finish(fig,'populationSVM');
 
@@ -86,6 +98,7 @@ finish(fig,'populationSVM');
         if ~p.visible, cleanup=onCleanup(@()close(f)); end %#ok<NASGU>
         if ~isempty(folder)
             file=fullfile(folder,[char(p.prefix) '_' name '.png']); exportgraphics(f,file,'Resolution',150); files.(name)=file;
+            savefig(f,[file(1:end-4) '.fig']);
         end
         if p.visible, figures.(name)=f; else, figures.(name)=[]; end
     end

@@ -28,6 +28,7 @@ folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
 p.makePlot=true; p.visible=false; p.savePath=folder.Folder; p.connectTime=true;
 [figs,files]=fn_plotNeuralEmbedding(r,p);
 verifyEmpty(t,figs.umap); verifyTrue(t,isfile(files.umap));
+verifyTrue(t,isfile([files.umap(1:end-4) '.fig']));
 verifyEqual(t,findall(groot,'Type','figure'),before);
 end
 function testMissingNonfiniteNormalizationAndWindow(t)

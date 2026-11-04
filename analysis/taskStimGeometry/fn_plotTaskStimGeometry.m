@@ -56,6 +56,7 @@ if ~isempty(p.savePath)
     if ~isfolder(p.savePath), mkdir(p.savePath); end
     file=fullfile(p.savePath,[prefix '_' r.cfg.period '.png']);
     exportgraphics(fig,file,'Resolution',150); files.projections=file;
+    savefig(fig,[file(1:end-4) '.fig']);
 end
 if p.visible, figures.projections=fig; else, figures.projections=[]; end
 [figures.similarity,file]=plotSimilarity(r,p,visible,prefix);
@@ -96,6 +97,7 @@ file='';
 if ~isempty(p.savePath)
     file=fullfile(p.savePath,[prefix '_' r.cfg.period '_similarity.png']);
     exportgraphics(fig,file,'Resolution',150);
+    savefig(fig,[file(1:end-4) '.fig']);
 end
 if p.visible, handle=fig; else, handle=[]; end
 end

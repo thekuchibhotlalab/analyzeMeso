@@ -22,7 +22,7 @@ cfg.runUMAP=true;                 % false: prepare and run PCA only.
 [cfg.umap,~]=fn_neuralEmbeddingConfig();
 cfg.umap.nNeighbors=15; cfg.umap.minDist=0.1;
 cfg.umap.metric='correlation'; cfg.umap.init='random'; cfg.umap.normalization='none';
-p.makePlot=true; p.visible=true; p.savePath=''; p.prefix='learningProgressionEmbedding';
+p.makePlot=true; p.visible=true; p.savePath=''; p.prefix='learningProgressionEmbedding'; % PNG + FIG exports.
 p.colorBy=["stimulus","action","task","responsePeriod","learningBin"];
 p.connectBins=true; p.pointSize=30; p.showPCA=true;
 end

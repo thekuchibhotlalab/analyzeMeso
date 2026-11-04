@@ -30,7 +30,7 @@ cfg.decoderPseudoTrials=[];    % Deprecated/ignored; no pseudo-population decodi
 
 plotCfg.makePlot=true;
 plotCfg.visible=true;
-plotCfg.savePath='';           % PNG folder; visible=false saves without display.
+plotCfg.savePath='';           % PNG + editable FIG folder; visible=false saves without display.
 plotCfg.prefix='neuralGeometry';
 plotCfg.trialTypes=strings(0,1); % Condition names for extra traces; []: skip.
 plotCfg.projectionError='sem'; % CV: SEM/SD across repeat means; legacy: trial errors.

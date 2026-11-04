@@ -24,7 +24,7 @@ cfg.verbose=true;
 
 plotCfg.makePlot=true;
 plotCfg.visible=true;
-plotCfg.savePath='';
+plotCfg.savePath='';            % Save PNG + editable FIG files when nonempty.
 plotCfg.prefix='trialProgression';
 plotCfg.showSEM=true;          % Descriptive SEM across neurons, not animal-level CI.
 plotCfg.heatmapMethod='bin';    % 'bin', 'smooth', or 'none'; display only.

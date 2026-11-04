@@ -23,7 +23,7 @@ cfg.verbose=true;
 
 plotCfg.makePlot=true;
 plotCfg.visible=true;
-plotCfg.savePath='';
+plotCfg.savePath='';            % Save PNG + editable FIG files when nonempty.
 plotCfg.prefix='neuralEmbedding';
 plotCfg.colorBy=strings(0,1); % []: conditionName, then all cfg.variables.
 plotCfg.showTime=true;        % Append a continuous time-colored panel across all conditions.

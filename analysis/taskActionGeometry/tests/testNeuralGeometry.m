@@ -171,6 +171,12 @@ verifyEqual(t,sort(fieldnames(r.plotFiles)),{'activity';'projections';'trajector
 verifyEqual(t,sort(fieldnames(figs)),{'activity';'projections';'trajectories';'variance'});
 for name=fieldnames(r.plotFiles)'
     verifyTrue(t,isfile(r.plotFiles.(name{1}))); verifyEmpty(t,figs.(name{1}));
+    file=r.plotFiles.(name{1}); figFile=[file(1:end-4) '.fig'];
+    verifyTrue(t,isfile(figFile));
+    reopened=openfig(figFile,'new','invisible');
+    cleanup=onCleanup(@()close(reopened));
+    verifyNotEmpty(t,findall(reopened,'Type','axes'));
+    clear cleanup
 end
 save(fullfile(folder.Folder,'result.mat'),'r');
 % Old saved results can recover both pooled summaries from stored moments.

@@ -77,6 +77,7 @@ title(layout,{sprintf('%s | %d groups x %d response periods x %d learning bins |
 file='';
 if ~isempty(p.savePath)
     file=fullfile(p.savePath,[char(p.prefix) '_' mode '.png']); exportgraphics(fig,file,'Resolution',150);
+    savefig(fig,[file(1:end-4) '.fig']);
 end
 if p.visible, handle=fig; else, handle=[]; end
 end

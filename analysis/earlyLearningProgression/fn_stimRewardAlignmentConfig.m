@@ -18,7 +18,7 @@ cfg.pooledBinSize=50;               % Up to 10 panels: 1:50, 51:100, ...; stop w
 
 plotCfg.makePlot=true;
 plotCfg.visible=true;
-plotCfg.savePath='';                % With visible=false: save PNGs, close figures.
+plotCfg.savePath='';                % With visible=false: save PNGs + FIGs, close figures.
 plotCfg.prefix='stimRewardAlignment';
 plotCfg.maxScatterPanels=12;        % Paginate long learning sequences.
 plotCfg.showPooledEarlyTrials=true;  % Pool animals in separate S1/S2 figures and correlations.

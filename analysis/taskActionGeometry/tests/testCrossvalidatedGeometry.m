@@ -120,6 +120,7 @@ verifyEqual(t,findall(groot,'Type','figure'),before);
 verifyTrue(t,isfield(files,'decodingTime')&&isfield(files,'decodingNeurons'));
 for name=fieldnames(files)'
     verifyTrue(t,isfile(files.(name{1}))); verifyEmpty(t,f.(name{1}));
+    file=files.(name{1}); verifyTrue(t,isfile([file(1:end-4) '.fig']));
 end
 end
 function testExclusionProvenanceAndDecoderIndependentFolds(t)

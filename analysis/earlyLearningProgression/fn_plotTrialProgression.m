@@ -173,6 +173,7 @@ end
             if ~isfolder(p.savePath), mkdir(p.savePath); end
             file=fullfile(p.savePath,[prefix '_' key '.png']);
             exportgraphics(fig,file,'Resolution',150); files.(key)=file;
+            savefig(fig,[file(1:end-4) '.fig']);
         end
         if p.visible, figures.(key)=fig; else, figures.(key)=[]; end
     end

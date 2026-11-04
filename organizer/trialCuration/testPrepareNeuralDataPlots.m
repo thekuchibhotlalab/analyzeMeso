@@ -33,6 +33,11 @@ verifyTrue(t,isfield(r.plotFiles,'trackingCurve'));
 for name=fieldnames(r.plotFiles)'
     file=r.plotFiles.(name{1}); verifyTrue(t,isfile(file));
     info=imfinfo(file); verifyEqual(t,info.Format,'png');
+    figFile=[file(1:end-4) '.fig']; verifyTrue(t,isfile(figFile));
+    reopened=openfig(figFile,'new','invisible');
+    cleanup=onCleanup(@()close(reopened));
+    verifyNotEmpty(t,findall(reopened,'Type','axes'));
+    clear cleanup
     verifyEmpty(t,figures.(name{1}));
 end
 end
@@ -83,6 +88,7 @@ function testDisplayAndSave(t)
 cleanup=onCleanup(@()closeFigures(figures)); %#ok<NASGU>
 for name=fieldnames(r.plotFiles)'
     verifyTrue(t,isfile(r.plotFiles.(name{1})));
+    file=r.plotFiles.(name{1}); verifyTrue(t,isfile([file(1:end-4) '.fig']));
     verifyEqual(t,char(figures.(name{1}).Visible),'on');
 end
 end

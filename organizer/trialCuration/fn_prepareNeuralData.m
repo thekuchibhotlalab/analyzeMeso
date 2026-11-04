@@ -10,8 +10,8 @@ function [curated,figures] = fn_prepareNeuralData(curated,sessionInfoFile,vararg
 % no source filename is available). Relative paths are relative to pwd.
 % The actual file loaded is recorded in curated.neuralSourceFile.
 % 'ShowPlots',false: display neural QC figures (default: no display).
-% 'PlotSavePath','': folder for PNGs (default: no saving).
-% A save folder alone generates PNGs using hidden figures, then closes them.
+% 'PlotSavePath','': folder for PNGs and editable FIGs (default: no saving).
+% A save folder alone generates PNGs and FIGs using hidden figures, then closes them.
 % Includes the tracking tradeoff curve and selected session count, if available.
 % Trial-selection plots are controlled separately by fn_prepareTrialData's
 % MakePlot argument. Saved filenames are in curated.plotFiles.
@@ -105,6 +105,7 @@ if showPlots || ~isempty(plotSavePath)
         if ~isempty(plotSavePath)
             file=fullfile(plotSavePath,[prefix '_' names{k} '.png']);
             exportgraphics(fig,file,'Resolution',150);
+            savefig(fig,[file(1:end-4) '.fig']);
             curated.plotFiles.(names{k})=file;
         end
         if showPlots

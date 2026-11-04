@@ -111,6 +111,9 @@ folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
 p.makePlot=true; p.visible=false; p.savePath=folder.Folder;
 [figures,files]=fn_plotLearningProgressionEmbedding(r,p);
 verifyTrue(t,isfile(files.umap)&&isfile(files.pca));
+for key=fieldnames(files)'
+    file=files.(key{1}); verifyTrue(t,isfile([file(1:end-4) '.fig']));
+end
 verifyEmpty(t,figures.umap); verifyEmpty(t,figures.pca);
 verifyEqual(t,findall(groot,'Type','figure'),before);
 end

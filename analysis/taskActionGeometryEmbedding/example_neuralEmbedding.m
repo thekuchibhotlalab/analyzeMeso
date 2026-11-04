@@ -27,11 +27,17 @@ conditions=table(["T1_S1_L";"T1_S2_R";"T2_S3_L";"T2_S4_R"], ...
 cfg.timeWindow=[-1.0 4.0];           % Whole trial, or e.g. [-0.5 1].
 cfg.frameRate=15; cfg.eventFrame=31;
 cfg.normalization='zscore';    % Already normalized input.
-cfg.nNeighbors=120; cfg.minDist=0.4; cfg.metric='correlation';
+cfg.nNeighbors=80; cfg.minDist=0.4; cfg.metric='correlation';
 plotCfg.colorBy=["conditionName","action","task"];
 plotCfg.connectTime=false;   % Set true to join time bins within each condition.
 % plotCfg.visible=false; plotCfg.savePath='B:\analysis\neuralEmbedding';
+
+plotCfg.savePath = 'B:\analysis\T2_firstDayComparison\neuralEmbedding';
+plotCfg.visible = false; % Save without displaying; true to also display
+plotCfg.prefix = 'firstDayT2'; % Optional filename prefix
+
 [embedding,figures]=fn_analyzeNeuralEmbedding(intAct,conditions,cfg,plotCfg);
+
 
 % All panels reuse these coordinates; labels never influence the fit.
 xy=embedding.embedding;      % (nCondition*nSelectedTime) x 2
@@ -39,3 +45,4 @@ pointInfo=embedding.pointInfo;
 pointLabels=embedding.pointLabels;
 % [figures,files]=fn_plotNeuralEmbedding(embedding,plotCfg); % Replot without fitting.
 % save('neuralEmbedding.mat','embedding'); % No graphics or trial arrays inside.
+save([plotCfg.savePath filesep 'embedding.mat'],'embedding');

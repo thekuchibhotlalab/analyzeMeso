@@ -392,6 +392,7 @@ verifyFalse(t,any(contains(string(fieldnames(files)),'selectedNeurons')));
 for a=1:3
     name=sprintf('animal%d_allNeurons',a);
     verifyEmpty(t,f.(name)); verifyTrue(t,isfile(files.(name)));
+    file=files.(name); verifyTrue(t,isfile([file(1:end-4) '.fig']));
 end
 verifyEqual(t,findall(groot,'Type','figure'),before);
 end

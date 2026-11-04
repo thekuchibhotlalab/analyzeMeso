@@ -494,6 +494,22 @@ Exact bin ranges, phase composition and source identities remain inspectable.
 Start with `example_learningProgressionEmbedding.m`; existing early-learning
 functions remain available.
 
+## Saving analysis figures
+
+All current geometry, decoding, embedding, learning-progression and neural-QC
+plot exporters save both a PNG and an editable MATLAB `.fig` with the same stem
+when a save directory is specified. Use `plotCfg.savePath` (or `p.savePath` in
+examples using `p`), and `PlotSavePath` for `fn_prepareNeuralData`. Missing folders
+are created automatically. Hidden plotting also saves both formats before closing
+the figure. Returned `plotFiles`/`files` entries continue to point to the PNG;
+the companion `.fig` is in the same folder. Reopen one with:
+
+```matlab
+openfig('B:\analysis\neuralGeometry\neuralGeometry_projections.fig','new','visible');
+```
+
+Rerun plotting to generate FIG files for previously saved results.
+
 ## Tests
 
 From the repository root with the relevant MATLAB folders on the path:
