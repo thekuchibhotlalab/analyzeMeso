@@ -18,7 +18,7 @@ decodeCfg.repeats=5;         % 5 repetitions x 5 outer folds.
 % decodePlots.populationXAxis='count'; % Actual # neurons instead of percent.
 % decodePlots.visible=false; decodePlots.savePath='B:\analysis\taskActionDecoding';
 
-plotCfg.savePath = 'B:\analysis\T2E\decoding';
+plotCfg.savePath = 'B:\analysis\IntAll\decoding';
 plotCfg.visible = false; % Save without displaying; true to also display
 plotCfg.prefix = 'decoding'; % Optional filename prefix
 
