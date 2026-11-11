@@ -93,7 +93,9 @@ if makePlot
 end
 if cfg.loadNeural
     source=cfg.sessionInfoFile;
-    if isempty(source) && ismember(cfg.neuralField,metadata.Properties.VariableNames)
+    hasSource=ismember(cfg.neuralField,metadata.Properties.VariableNames) || ...
+        (strcmpi(cfg.neuralField,'dffStimChoice')&&all(ismember({'dffStim','dffChoice'},metadata.Properties.VariableNames)));
+    if isempty(source) && hasSource
         source=metadata; % Backward-compatible full sessionInfo table input.
     end
     curated=fn_prepareNeuralData(curated,source);

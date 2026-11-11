@@ -214,7 +214,7 @@ if length(nNeuron) == 5
     animalLabels = {'zz151_AC1','zz153','zz159','zz170_AC1','zz170_AC2'};
 end
 %% PART 5.3 -- plot the TCA components
-nModel = 1;
+nModel = 7;
 % Plot 1 -- Contribution and correlation of all tensor components (TCs)
 % Left: lambda (weight) of each TC. Higher weight means more contribution to neural activity.
 % Right: Correlation between all TCs. Chec if any components has unreasonably high correlation, 
@@ -239,7 +239,7 @@ for i = 1:5
     imagesc(temp); colorbar; clim([prctile(temp(:),5) prctile(temp(:),95)])
     xlabel(subtitles{i})
     ylabel('nTC')
-    if i==2; xline(17);xline(10); end 
+    if i==2; xline(16);xline(10); end 
 end 
 % Plot 3 -- The 'variance explained of each component'
 % kind of lick variance explained plot for PCA, but different in the sense that TCs are

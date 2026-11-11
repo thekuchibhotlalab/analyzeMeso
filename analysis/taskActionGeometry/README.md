@@ -17,6 +17,9 @@ conditions=table(["Int_S1_L";"Int_S2_R";"Int_S3_L";"Int_S4_R"], ...
 [cfg,plotCfg]=fn_neuralGeometryConfig();
 cfg.method='lda'; cfg.nAxes=3; cfg.normalization='none';
 cfg.timeWindow=[]; % All bins; or [start end] in seconds.
+cfg.separationSummary='choiceTask'; % Three fixed window bars, as in example_neuralGeometry.
+cfg.separationTimeWindow=[]; % Separation summary only; e.g. [0 0.4] seconds.
+% Alternatively: cfg.separationTimePoints=([31 33 37]-cfg.eventFrame)/cfg.frameRate;
 cfg.crossValidate=true; cfg.cvFolds=5; cfg.cvRepeats=5;
 cfg.decoderTopFractions=[0.10 0.25]; % Single-neuron time courses.
 cfg.decoderWindowFrames=3; % Fixed -3:-1 at 15 Hz; input must be choice-aligned dffChoice.
@@ -45,6 +48,34 @@ identifiers, not continuous predictors.
    before splitting. Non-CV analysis requires two trials per cell.
 3. `time` explicitly supplies seconds, or time is `(frame-eventFrame)/frameRate`.
    `timeWindow` restricts fitting, normalization, metrics, and plots together.
+   The example uses `cfg.separationSummary='choiceTask'`: three bars per axis,
+   action/choice in [-0.15, 0] s, task in [-0.15, 0] s, and task in [0, 0.5] s.
+   Both intervals include zero. Each bar uses its own window's population
+   variance denominator, including trial noise. The analysis time grid must
+   cover both windows; at 15 Hz the bins are [-2, -1, 0]/15 and [0:7]/15 s.
+   Leave `separationTimeWindow` and `separationTimePoints` empty in this mode.
+   Results are in `variance.windowedVariableFraction` (axis x 3),
+   `variance.windowedVariableEnergy`, and `variance.windowedPopulationVariance`.
+   `geometry.separationBars` records their order, variables, windows and actual
+   times. CV computes each ratio on held-out trials before fold/repeat averaging;
+   SEM is in `crossValidation.varianceSEM.windowedVariableFraction`.
+   Existing generic configurations retain `separationSummary='selected'`.
+   In that mode, to restrict only the task-variable separation summary bars, set
+   `cfg.separationTimeWindow=[start end]` (inclusive seconds), or set
+   `cfg.separationTimePoints` to explicit bin times in seconds, including
+   noncontiguous bins. Use only one; both empty retains all analyzed bins.
+   Explicit times must match bins remaining after `timeWindow` (within 1e-9 s);
+   repeated times count only once. An empty selection raises an error.
+   The numerator and population denominator both use the selected bins, with
+   population means recentered over those bins and conditions. Axis fitting,
+   normalization, other metrics, and time-course plots retain `timeWindow`.
+   Rerun the analysis to change this selection. CV applies it separately to
+   each held-out split before averaging ratios and computing repeat SEM.
+   `geometry.separationTime` records the bins and
+   `variance.separationPopulationVariance` records the denominator (mean of
+   split denominators for CV). The bars remain fractions, not percentages:
+   0.005 means 0.5% of population total variance. They measure unique additive
+   main-effect separation, not the projection's total trial-by-trial R-squared.
 4. Normalization defaults to none. For each neuron, `zscore` subtracts one pooled
    mean and divides by one sample SD; `rms` divides by the square root of its
    pooled mean squared activity without centering. These pools contain **all raw
@@ -330,6 +361,23 @@ regression (defined below). The numerator captures time-varying action/task
 separation; it excludes trial noise and temporal changes shared across conditions.
 The denominator includes shared temporal dynamics, condition differences, and
 trial variability throughout the pooled population.
+For this bar summary, every time average and variance in the formula uses
+the bar's fixed window in `choiceTask` mode. In `selected` mode it uses
+the separation time selection when supplied; otherwise it uses all analyzed bins.
+Writing the denominator explicitly for a window W:
+
+$$
+D(W)=\sum_n\left[\operatorname{Var}_{c,t\in W}(\mu_{nc}(t))+
+\frac{1}{C|W|}\sum_c\sum_{t\in W}\operatorname{Var}_r(x_{nctr})\right],
+\qquad F_{kf}(W)=\frac{|W|^{-1}\sum_{t\in W}E_{kf}(t)}{D(W)}.
+$$
+
+The fixed three bars are F(action, [-0.15, 0]), F(task, [-0.15, 0]),
+and F(task, [0, 0.5]), on every axis. Variances use population normalization
+(divide by sample count, matching MATLAB `var(...,1,...)`). Temporal averaging
+is applied to squared separation energy, not to the responses before squaring.
+Estimated condition means still have finite-trial noise; these numerators are
+not explicitly noise-bias-corrected estimates.
 The adjacent condition-mean summary in the same `variance` figure first averages all trials within each
 condition, then plots $M_k/M_{pop}$ across conditions and time. It includes
 temporal dynamics and condition differences, but excludes within-condition trial
@@ -351,7 +399,8 @@ $[u_k^\top(\mu_L(t)-\mu_R(t))]^2/4$.
 
 | Metric / result field | Definition and interpretation |
 | --- | --- |
-| `variance.variableUniquePooledPopulationFraction` | Mean unique variable variance on each axis / total population variance pooled over conditions, trials and time. Grouped bars in the left summary. |
+| `variance.windowedVariableFraction` | Fixed choiceTask summary, axis x 3; each bar uses its own window in numerator and denominator. |
+| `variance.variableUniquePooledPopulationFraction` | Mean unique variable variance on each axis / total population variance pooled over conditions, trials and selected separation times (all analyzed times by default). Grouped bars in selected mode. |
 | `variance.pooledAllTrialsFraction` | Total projected variance / population total, pooling conditions, time and trials about one grand mean. Retained in the output. |
 | `variance.pooledTrialMeanFraction` | Projected variance / population total of condition-mean PSTHs pooled across conditions and time. Right summary in `variance`. |
 | `variance.pooledAllTrialsProjectedVariance`, `pooledAllTrialsPopulationVariance` | Numerator (per axis) and denominator (scalar) of the all-trial pooled fraction. Corresponding `pooledTrialMean...` fields hold the trial-averaged quantities. |
@@ -401,7 +450,7 @@ non-CV mode uses the analyzed, optionally normalized coordinates.
 | Figure | Panels |
 | --- | --- |
 | `activity` | Per-condition neuron PSTHs with one shared peak-time ordering and color scale; mean population traces marginalized by variable, with SEM across neuron-wise trial means. |
-| `projections` | Marginalized traces and optional `trialTypes` condition traces on each axis, with repeat-mean SEM shading in CV mode. `projectionError='sd'` shows SD of repeat means; `'none'` hides bands. |
+| `projections` | Marginalized and condition traces with trial SEM by default (`projectionError='trialsem'`). `'sem'` retains CV-repeat SEM; `'sd'` shows repeat SD in CV mode; `'none'` hides bands. |
 | `variance` | Adjacent variable-separation / pooled population total and condition-mean total variance summaries, per-time variance capture, weight similarity, and separation capture. Condition-contribution heatmap/time courses are optional (`showConditionContribution=false` by default). |
 | `decodingTime` | Held-out mean single-neuron accuracy for training-ranked top 10% and 25%, one panel per binary variable. |
 | `decodingNeurons` | Individual neurons ranked by held-out accuracy, colored by animal, with repeat SEM. Choice uses fixed pre-choice frames -3:-1; task uses the full window. |
@@ -412,10 +461,35 @@ overrides it with one custom triplet. These projections may use nonorthogonal
 cross-variable axes and need not preserve distances. Population SEM is descriptive
 across neurons, **not** an animal-level confidence interval.
 
-**Legacy non-CV projection uncertainty** (`crossValidate=false`) follows the
-formula below. CV mode instead uses repeat SEM as described above.
+**Saved trial-based projection uncertainty.**
+`geometry.projection.conditionTrialSEM` explicitly stores trial-based SEM as
+axis x time x condition, for both CV and non-CV analyses. Its interpretation
+is recorded in `geometry.projection.trialSEMEstimation`. The existing
+`conditionSEM` field is unchanged (CV-repeat SEM in CV analyses).
+To upgrade an existing saved structure without rerunning fits:
+
+```matlab
+geometry=fn_addNeuralGeometryTrialSEM(geometry);
+save('geometry.mat','geometry'); % Use your actual filename.
+```
+
+Trial-based projection shading is selected by
+`plotCfg.projectionError='trialsem'` (default), including when replotting saved
+CV results. `fn_neuralGeometryTrialSEM` reads each held-out split's original
+trial SEM, rather than the top-level `projection.conditionSEM` (which in CV
+results contains repeat SEM). For F folds, marginal trial variance V_s in each
+fold is combined as sum(V_s)/F^2. The displayed band is the square root of the
+mean of these variances across repeats: a typical-repeat, fixed-axis trial SEM
+estimate. It is not divided by sqrt(number of repeats), since repeats reuse
+trials. Conditions are averaged with equal weights before this combination.
+Fitted axes are treated as fixed; dependence from fitting overlapping training
+sets is not modeled. This estimates trial sampling uncertainty, not uncertainty
+over axes or animals. Missing per-split trial SEM requires rerunning analysis;
+it is not silently replaced with CV-repeat SEM.
+
+For non-CV results, trial SEM follows the formula below directly.
 Projection uncertainty is separate from the neuron-wise SEM in the activity
-sanity plots. Set `plotCfg.projectionError='sem'` (default), `'sd'`, or `'none'`.
+sanity plots. Use `'sem'` to restore the previous CV-repeat bands.
 For animal $a$, condition $c$, and fixed axis $k$, project the actual trials
 using that animal's weight block, and calculate sample variance $s^2_{ack}(t)$.
 With $R_{ac}$ trials, the pooled mean's SEM is

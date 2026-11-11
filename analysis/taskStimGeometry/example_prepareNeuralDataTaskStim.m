@@ -12,7 +12,7 @@ end
 
 %% load data accoridng to cfg
 cfg = fn_T2E_Int_TrialSelectionConfig();
-cfg.neuralField = 'dffStim';
+cfg.neuralField = 'dffStimChoice';
 allTrialsel = {};
 for i = 1:length(animals)
     trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);

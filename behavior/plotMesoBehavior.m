@@ -13,7 +13,7 @@ datapath = ['G:\ziyi\mesoData\' mouse '_behavior'];
 
 
 %%
-mouse = {'zz142','zz151','zz153','zz155','zz159','zz170','zz172','zz173','zz177','zz179','zz180'};
+mouse = {'zz151','zz153','zz159','zz170','zz172','zz177','zz179','zz180'};
 for i = 1:length(mouse)
     ops.mouse = mouse{i};
     ops.datapath = ['G:\ziyi\mesoData\' ops.mouse '_behavior\matlab\'];
@@ -21,14 +21,14 @@ for i = 1:length(mouse)
     beh = array2table(beh(:,1:13), 'VariableNames', ...
         {'date','day','session','trialNum', 'stimulus', 'action','responseType','stimulusTime','responseTime',...
         'stimulusFrame','responseFrame','rewardFrame','context'});
-    save(['G:\ziyi\mesoData_analyzed\behavior\' mouse{i} '_beh.mat'],'beh');
+    %save(['G:\ziyi\mesoData_analyzed\behavior\' mouse{i} '_beh.mat'],'beh');
 end 
 
 %%
 
 %% Interleaved summary stats
 
-mouseList = {'zz137','zz142','zz151','zz153','zz155','zz159'};
+mouseList = {'zz151','zz153','zz159','zz170','zz172','zz177','zz180'};
 
 datapath = cellfun(@(x)(['G:\ziyi\mesoData\' x '_behavior\matlab\']),mouseList,'UniformOutput',false) ;
 

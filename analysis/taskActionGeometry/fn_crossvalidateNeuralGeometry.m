@@ -129,6 +129,7 @@ r.projection.errorEstimation=r.estimation;
 r.crossValidation.enabled=true; r.crossValidation.nFolds=F; r.crossValidation.nRepeats=R;
 r.crossValidation.assignments=assignments; r.crossValidation.models=models;
 r.crossValidation.splits=splits; r.crossValidation.weightsBySplit=W;
+r=fn_addNeuralGeometryTrialSEM(r);
 r.crossValidation.rawUnitWeightsBySplit=rawW;
 r.crossValidation.repeat=repelem((1:R)',F); r.crossValidation.fold=repmat((1:F)',R,1);
 r.crossValidation.note='Mean directions are descriptive and not refitted/evaluated on all trials. Averaging can destroy within-factor orthogonality. Metrics use individual training axes.';

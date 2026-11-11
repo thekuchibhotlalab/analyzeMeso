@@ -3,6 +3,8 @@ tests=functiontests(localfunctions);
 end
 function setupOnce(t)
 t.applyFixture(matlab.unittest.fixtures.PathFixture(fileparts(fileparts(mfilename('fullpath')))));
+repo=fileparts(fileparts(fileparts(fileparts(mfilename('fullpath')))));
+t.applyFixture(matlab.unittest.fixtures.PathFixture(fullfile(repo,'helper_function')));
 end
 function testDirectLdaAndPseudoTrialProvenance(t)
 [A,C,c,p,T]=fixture(); state=rng;
@@ -31,11 +33,11 @@ for mode=["withinAnimal","diagonal"]
         verifyEqual(t,r.thresholds(k),w'*mean(mu,2),'AbsTol',1e-10);
     end
     for q=1:4
-        verifySize(t,r.projection.scores{q},[12+q 3]);
+        verifySize(t,r.projection.scores{q},[15+q 3]);
         joined=[];
         for a=1:2
             ids=r.projection.sourceTrial{q}(:,a);
-            verifyEqual(t,numel(unique(ids)),numel(ids));
+            verifyEqual(t,sort(unique(ids)),(1:size(A{q,a},3))'); % Every trial participates.
             Z=reshape(mean(A{q,a}(:,5:7,ids),2),size(A{q,a},1),[]);
             joined=[joined;Z]; %#ok<AGROW>
             row=r.projection.sourceRowInReduced{q}(:,a);

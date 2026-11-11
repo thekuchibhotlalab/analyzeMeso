@@ -1,6 +1,6 @@
 # Trial-averaged neural UMAP
 
-Fit **one unsupervised 2D embedding** of all condition × selected-time population
+Fit **one unsupervised 3D embedding** of all condition × selected-time population
 vectors. Recolor the same coordinates by trial condition, action, task, or other
 condition-table labels. All retained neurons from all animals are concatenated
 as features. There is no separate fit per animal, condition, or label panel.
@@ -13,7 +13,7 @@ embedding of longitudinal neural activity, with one point per imaging frame.
 Its methods specify 100 neighbors, correlation distance, minimum distance 0.1,
 and **three** embedding components.
 
-Here the requested adaptation uses **two components and trial means**, with one
+Here the requested adaptation uses **three components and trial means**, with one
 point per condition/time bin and neurons pooled across animals. It retains the
 paper's neighborhood, distance, and minimum-distance settings as starting values.
 It is not a replication of the paper's frame-level, longitudinal analysis.
@@ -29,17 +29,18 @@ package release compatible with your MATLAB version and its platform-specific ME
 
 ```matlab
 addpath('analysis/taskActionGeometryEmbedding');
+addpath('helper_function'); % multitaskColors
 umapRoot='C:\Users\zzhu34\Documents\GitHub\umap';
 addpath(genpath(umapRoot));
 javaaddpath(fullfile(umapRoot,'util','suh.jar')); % Once per MATLAB session if needed.
 
 conditions=table(["Int_S1_L";"Int_S2_R";"Int_S3_L";"Int_S4_R"], ...
     ["L";"R";"L";"R"],["T1";"T1";"T2";"T2"], ...
-    'VariableNames',{'conditionName','action','task'});
+    repmat("Int",4,1),'VariableNames',{'conditionName','action','task','learning'});
 [cfg,plotCfg]=fn_neuralEmbeddingConfig();
 cfg.normalization='none';
 cfg.timeWindow=[];
-plotCfg.colorBy=["conditionName","action","task"];
+plotCfg.layout='combined';
 [embedding,figures]=fn_analyzeNeuralEmbedding(intAct,conditions,cfg,plotCfg);
 ```
 
@@ -48,7 +49,8 @@ plotCfg.colorBy=["conditionName","action","task"];
 Select the intended training period beforehand (for example, fully interleaved
 `Int`). Task in this example is stimulus set S1/S2 versus S3/S4; labels are supplied
 explicitly, never inferred from names. Any extra variables are annotation columns,
-not training targets. `cfg.variables` chooses which are included by default in plots.
+not training targets. `cfg.variables` chooses the default factor list for the
+legacy label layout; the combined layout always reads learning, task, and action.
 
 ## Exact data construction
 
@@ -71,8 +73,8 @@ $$X_{i,:}=[M^{(1)}_{:,t,c};\ldots;M^{(a)}_{:,t,c};\ldots]^\top,
 \qquad i=(c-1)T+t.$$
 
 Thus $X$ has $(C T)\times N_{pooled}$ entries. For 4 conditions, 100 bins, and
-5,000 pooled neurons, UMAP receives a **400 × 5,000 matrix**, returning **400 × 2**
-coordinates. Time is not appended as a feature; the embedding is not supervised
+5,000 pooled neurons, UMAP receives a **400 × 5,000 matrix**, returning **400 × 3**
+coordinates by default. Time is not appended as a feature; the embedding is not supervised
 by task/action, and it has no temporal smoothness constraint. No PCA pre-reduction,
 time smoothing, or single-trial resampling is applied.
 
@@ -118,6 +120,7 @@ and [parameter guide](https://umap-learn.readthedocs.io/en/latest/parameters.htm
 
 | Analysis option | Default / meaning |
 | --- | --- |
+| `nComponents` | 3; UMAP fits all three coordinates from neural activity. Set 2 for the optional 2D view. |
 | `nNeighbors` | 100; capped at number of points minus 1, with warning. Current MATLAB wrapper accepts integers 3–199. Larger values emphasize broader neighborhoods. |
 | `minDist`, `spread` | 0.1, 1; control embedding compactness. Require `0 < minDist <= spread <= 10` for this backend. |
 | `metric` | `'correlation'`; also `'euclidean'`, `'cosine'`. |
@@ -143,7 +146,7 @@ reruns before interpreting a pattern; rotating/reflected embeddings are equivale
 
 $$\frac1P\sum_i\frac{|N_k^X(i)\cap N_k^Y(i)|}{k}.$$
 
-The input uses the configured neural-space metric; the embedding uses 2D Euclidean
+The input uses the configured neural-space metric; the embedding uses Euclidean
 distance. Values range from 0 to 1, with 1 retaining every evaluated neighbor.
 
 `diagnostics.trustworthiness` penalizes false neighbors introduced by the embedding:
@@ -170,7 +173,7 @@ space or with held-out data; points at adjacent time bins are not independent tr
 
 | Field | Shape / purpose |
 | --- | --- |
-| `embedding` | Point × 2 UMAP coordinates. |
+| `embedding` | Point × 3 UMAP coordinates by default (`nComponents`). |
 | `populationVectors` | Point × pooled-neuron trial means actually passed to UMAP. |
 | `pointInfo` | Point, condition, selected-time and original-frame indices, plus seconds. Time varies fastest within each condition. |
 | `pointLabels` | Condition-table row replicated for each time bin, aligned to embedding rows. |
@@ -182,17 +185,47 @@ space or with held-out data; points at adjacent time bins are not independent tr
 | `cfg`, `conditions`, `variables`, `time` | Reproducible analysis setup and labels. |
 | `plotFiles` | Saved PNG paths. No figure handles, raw trial arrays, or UMAP model object in the first output. |
 
-The single grouped figure reuses exactly the same coordinates, axis limits, and
-aspect ratio in every panel. Colors change according to `plotCfg.colorBy`; they
-never cause a refit. A final time panel (`plotCfg.showTime=true` by default) colors
-all points by time within the trial in seconds, using one continuous blue-to-yellow
-scale regardless of condition, task, or action. The usual four panels use a 2-by-2
-layout. Set `showTime=false` to omit the final panel.
-`connectTime=true` adds within-condition connecting lines in the label panels;
-lines do not assert that UMAP preserves velocity or temporal order.
+The default `plotCfg.layout='combined'` produces three panels in one figure, with
+identical coordinates, axis limits, and aspect ratio:
+
+- **Learning phase + time:** `conditions.learning` supplies `E` (early learning,
+  muted berry) or `Int` (interleaved olive), queried from `multitaskColors`. Color
+  progresses from dark to light with increasing time in seconds. Each phase has
+  a matching colorbar with the same time limits, spanning the selected time window.
+- **Task:** `conditions.task` supplies `T1`/`T2` blue/orange; every point is a
+  filled circle, with no action encoding.
+- **Action:** `conditions.action` supplies L (black filled circle) or R (red
+  open triangle), using the action-only style from `multitaskColors`.
+
+Task and action panels display only `plotCfg.taskActionTimeWindow=[-1 1]`
+seconds, inclusive. Set `[]` to show all fitted times, or supply another range.
+This is a display filter: it does not change fitting, diagnostics, or the
+learning/time panel. An empty range of samples is annotated in those panels.
+`cfg.timeWindow` separately determines which samples are used for fitting.
+
+Set `cfg.nComponents=2` or `3` before analysis for a true 2D or 3D UMAP fit.
+All panels show the corresponding coordinates from that same fit. Time is only
+encoded by shading, not used as a spatial axis.
+Their limits and viewing angles are linked. PNG and FIG export retain the 3D
+plots; visible figures can be rotated. Existing saved 2D embeddings still replot
+in 2D: rerun `fn_analyzeNeuralEmbedding` with `cfg.nComponents=3` to obtain a true
+third coordinate. Changing a plot option cannot reconstruct that coordinate.
+
+Labels are read directly from `conditions`, mapped through
+`pointInfo.conditionIndex`; names are never parsed to infer learning/task/action.
+Missing required columns produce an explanatory error. You can add them to a
+saved result's `conditions` and replot without UMAP or the original trial arrays.
+Early-learning shading starts at `0.65*base` and ends at `0.45*base+0.55`, as does
+interleaved shading; lightness is interpolated in RGB with time.
+
+`plotCfg.layout='labels'` restores the previous separate label/time panels.
+`colorBy` and `showTime` only affect that legacy layout. `connectTime=true` adds
+within-condition lines in time order; lines do not assert that UMAP preserves
+velocity or temporal order. Neither layout refits the embedding.
 
 ```matlab
-plotCfg.colorBy=["conditionName","action","task"];
+plotCfg.layout='combined';
+plotCfg.taskActionTimeWindow=[-1 1];
 plotCfg.connectTime=true;
 plotCfg.visible=false; plotCfg.savePath='B:\analysis\neuralEmbedding';
 [figures,files]=fn_plotNeuralEmbedding(embedding,plotCfg);

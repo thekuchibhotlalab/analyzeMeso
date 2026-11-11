@@ -12,7 +12,7 @@ for name=fieldnames(defaults)'
 end
 p.trajectory=validatestring(p.trajectory,{'none','3d','2d','both'});
 p.similarity=validatestring(p.similarity,{'correlation','angle','cosine'});
-p.projectionError=validatestring(p.projectionError,{'sem','sd','none'});
+p.projectionError=validatestring(p.projectionError,{'trialsem','sem','sd','none'});
 validateattributes(p.columns,{'numeric'},{'scalar','integer','>=',3,'finite'});
 validateattributes(p.figureWidth,{'numeric'},{'scalar','positive','finite'});
 validateattributes(p.rowHeight,{'numeric'},{'scalar','positive','finite'});
@@ -82,13 +82,16 @@ traceRows=projectionRows*double(~isempty(selected));
 panels=(projectionRows+traceRows)*cols;
 [f,layout]=newFigure('Projection time courses',panels,cols);
 errorMode=p.projectionError;
-if ~strcmp(errorMode,'none') && ~isfield(r.projection,['condition' upper(errorMode)])
+if ~ismember(errorMode,{'none','trialsem'}) && ~isfield(r.projection,['condition' upper(errorMode)])
     warning('neuralGeometry:MissingProjectionError', ...
         'Saved result lacks trial-based %s. Rerun fn_analyzeNeuralGeometry once to add projection bands.',upper(errorMode));
     errorMode='none';
 end
 if strcmp(errorMode,'none')
     title(layout,'Fixed pooled-neuron axes: marginalized and condition time courses');
+elseif strcmp(errorMode,'trialsem')
+    title(layout,{'Projection means with +/-1 trial SEM', ...
+        'Fixed-axis trial sampling uncertainty; not between-animal SEM'});
 elseif isCV
     title(layout,{'Held-out projections, averaged over training splits', ...
         'Shading = SEM across repeat means; partition variability, not animal uncertainty'});
@@ -169,6 +172,11 @@ else
     variableSummary=reshape(mean(energy,2),K,nf)./pooledPopulation;
     variableSummary(~isfinite(variableSummary))=NaN;
 end
+summaryLabels=r.variables; summaryField='variableUniquePooledPopulationFraction';
+if isfield(r.variance,'windowedVariableFraction')
+    variableSummary=r.variance.windowedVariableFraction;
+    summaryLabels=r.separationBars.label; summaryField='windowedVariableFraction';
+end
 cols=min(p.columns,max(K,3));
 summaryCount=3+double(p.showConditionContribution);
 summaryRows=ceil(summaryCount/cols);
@@ -182,13 +190,27 @@ else
     title(layout,'In-sample variance explained, matching-variable separation, and axis similarity');
 end
 ax=nexttile(layout,1,[1 summarySpan]); bars=bar(ax,variableSummary); xticks(ax,1:K);
+ax.Tag='variableSeparationSummary';
 if isCV
-    hold(ax,'on'); se=r.crossValidation.varianceSEM.variableUniquePooledPopulationFraction;
-    for v=1:nf, errorbar(ax,bars(v).XEndPoints,variableSummary(:,v),se(:,v),'k.','HandleVisibility','off'); end
+    hold(ax,'on'); se=r.crossValidation.varianceSEM.(summaryField);
+    for v=1:size(variableSummary,2), errorbar(ax,bars(v).XEndPoints,variableSummary(:,v),se(:,v),'k.','HandleVisibility','off'); end
 end
 xticklabels(ax,labels); set(ax,'TickLabelInterpreter','none'); ylabel(ax,'Unique variable variance / population total');
-title(ax,{'Task-variable separation on each axis', 'Population total includes all trials and time'});
-legend(ax,cellstr(r.variables),'Interpreter','none','Location','best');
+timeDescription='Population total includes all trials and time';
+if isfield(r,'separationTime') && numel(r.separationTime)<numel(time)
+    timeDescription=sprintf('All trials; %d selected bins (%g to %g s)', ...
+        numel(r.separationTime),min(r.separationTime),max(r.separationTime));
+end
+title(ax,{'Task-variable separation on each axis', timeDescription});
+if strcmp(summaryField,'windowedVariableFraction')
+    title(ax,{'Task-variable separation on each axis','Population total computed within each window'});
+    if exist('multitaskColors','file')==2
+        bars(1).FaceColor=multitaskColors('action');
+        taskColor=multitaskColors('task'); bars(2).FaceColor=taskColor;
+        bars(3).FaceColor=.55*taskColor+.45;
+    end
+end
+legend(ax,cellstr(summaryLabels),'Interpreter','none','Location','best');
 ax=nexttile(layout,1+summarySpan,[1 summarySpan]); bar(ax,trialMeanSummary); xticks(ax,1:K);
 if isCV
     hold(ax,'on'); errorbar(ax,1:K,trialMeanSummary,r.crossValidation.varianceSEM.pooledTrialMeanFraction,'k.');
@@ -411,6 +433,9 @@ end
 end
 
 function band=projectionBand(r,k,rows,mode)
+if strcmp(mode,'trialsem')
+    band=fn_neuralGeometryTrialSEM(r,k,rows); return;
+end
 % Marginalize each split BEFORE computing repeat SEM (conditions covary).
 if isfield(r,'crossValidation')&&r.crossValidation.enabled&&~strcmp(mode,'none')
     cv=r.crossValidation; S=numel(cv.splits); Y=zeros(numel(r.time),S);

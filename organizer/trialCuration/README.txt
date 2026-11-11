@@ -1,5 +1,33 @@
 TRIAL CURATION - GENERAL TRIAL SELECTION AND SESSION TRACKING
 
+COMPOSITE STIMULUS / CHOICE ALIGNMENT
+
+  cfg.neuralField='dffStimChoice';
+  trialSel=ani.fn_prepareTrialData(cfg);
+  trialSel=ani.fn_prepareNeuralData(trialSel);
+
+Existing parsed files are sufficient: the loader concatenates dffStim(:,2:33,:)
+with dffChoice(:,28:95,:), whose source event indices are both 31. No raw-data
+reparse or source MAT overwrite is needed. The result is exactly 100 frames:
+  1:29    pre-stimulus samples (-29:-1 frames)
+  30:32   stimulus onset and +1,+2 frames (0, 66.7, 133.3 ms at 15 Hz)
+  33:35   three strictly pre-choice samples (-200, -133.3, -66.7 ms)
+  36      choice onset
+  37:100  64 post-choice samples
+Thus stimulus onset is frame 30 and choice onset is frame 36, following the
+clarified layout. The three-frame choice decoding window is 33:35. Missing
+source time bins remain NaN; mismatched neuron/trial dimensions raise an error.
+An existing dffStimChoice column can also be loaded and must have 100 frames
+with this same convention. Row/trial mapping and tracking selection are unchanged.
+
+trialSel.neuralAlignment records source indices, event indices, segment ID,
+and segment-local times; cfg.alignedEventFrame is set to 36 for QC. The join
+between frames 32 and 33 is artificial and is not continuous trial time.
+Time-window analyses must respect the two segments rather than assigning one
+continuous seconds vector to all 100 frames. Existing analyses with hard-coded
+dffChoice frame numbers must be configured for the composite explicitly.
+analysis/learningChoiceAxes handles both alignments automatically.
+
 MANUALLY IDENTIFIED TRIAL NUMBERS
 
 To split a numeric pool (e.g. every trial on the first T2E date) into the

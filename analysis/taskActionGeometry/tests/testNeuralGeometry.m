@@ -62,9 +62,10 @@ for a=1:2
     end
 end
 verifyEqual(t,r.projection.conditionSEM,sqrt(expectedMeanVariance),'AbsTol',1e-12);
+verifyEqual(t,r.projection.conditionTrialSEM,r.projection.conditionSEM);
 verifyEqual(t,r.projection.conditionSD,sqrt(expectedTrialVariance),'AbsTol',1e-12);
 verifyGreaterThan(t,min(r.projection.conditionSD-r.projection.conditionSEM,[],'all'),0);
-verifyEqual(t,p.projectionError,'sem');
+verifyEqual(t,p.projectionError,'trialsem');
 end
 function testJointRegressionAndConfounding(t)
 [X,T,c,p]=fixture(); c.method='regression'; r=fn_analyzeNeuralGeometry(X,T,c,p);
@@ -126,6 +127,62 @@ verifyEqual(t,r.variance.pooledTrialMeanPopulationVariance,population,'AbsTol',1
 verifyGreaterThan(t,r.variance.pooledAllTrialsPopulationVariance, ...
     mean(r.variance.populationTotalVarianceByTime)+100);
 verifyGreaterThan(t,r.variance.pooledAllTrialsPopulationVariance,population);
+end
+function testSelectedSeparationTimes(t)
+[X,T,c,p]=fixture(); X=X(:,1); c.animalLabels="a";
+for k=1:4
+    X{k}=X{k}(:,:,1:10)+[1;.5;1.5]*linspace(-10,10,8);
+end
+baseline=fn_analyzeNeuralGeometry(X,T,c,p);
+bins=[2 4 5]; c.separationTimePoints=c.time(bins);
+r=fn_analyzeNeuralGeometry(X,T,c,p);
+selected=cellfun(@(x)x(:,bins,:),X,'UniformOutput',false);
+flat=reshape(cat(3,selected{:}),3,[]); population=sum(var(flat,1,2));
+verifyEqual(t,r.variance.separationPopulationVariance,population,'AbsTol',1e-10);
+energy=reshape(mean(r.variance.variableUniqueEnergyByTime(:,bins,:),2),size(r.weights,2),2);
+verifyEqual(t,r.variance.variableUniquePooledPopulationFraction,energy/population,'AbsTol',1e-12);
+verifyEqual(t,r.weights,baseline.weights);
+verifyEqual(t,r.variance.pooledAllTrialsFraction,baseline.variance.pooledAllTrialsFraction);
+verifyEqual(t,r.separationTime,c.time(bins));
+c.separationTimePoints=[]; c.separationTimeWindow=c.time([2 5]);
+window=fn_analyzeNeuralGeometry(X,T,c,p);
+verifyEqual(t,window.separationTime,c.time(2:5));
+c.separationTimeWindow=[]; c.separationTimePoints=c.time(2)+.001;
+verifyError(t,@()fn_analyzeNeuralGeometry(X,T,c,p),'neuralGeometry:SeparationTime');
+c.separationTimePoints=[]; c.separationTimeWindow=[100 101];
+verifyError(t,@()fn_analyzeNeuralGeometry(X,T,c,p),'neuralGeometry:SeparationTime');
+end
+function testFixedChoiceTaskWindows(t)
+[X,T,c,p]=fixture(); X=X(:,1); c.animalLabels="a";
+c.time=(-2:5)/10; c.separationSummary='choiceTask';
+for k=1:4
+    X{k}=X{k}(:,:,1:10)+[1;.5;1.5]*linspace(-10,10,8);
+end
+r=fn_analyzeNeuralGeometry(X,T,c,p);
+verifyEqual(t,r.separationBars.variable,["action";"task";"task"]);
+verifyEqual(t,r.separationBars.actualTimes{1},[-.1 0]);
+verifyEqual(t,r.separationBars.actualTimes{3},(0:5)/10);
+for b=1:3
+    if b<3, bins=2:3; else, bins=3:8; end
+    if b==1, v=2; else, v=1; end
+    selected=cellfun(@(x)x(:,bins,:),X,'UniformOutput',false);
+    flat=reshape(cat(3,selected{:}),3,[]); denominator=sum(var(flat,1,2));
+    energy=mean(r.variance.variableUniqueEnergyByTime(:,bins,v),2);
+    verifyEqual(t,r.variance.windowedPopulationVariance(b),denominator,'AbsTol',1e-10);
+    verifyEqual(t,r.variance.windowedVariableFraction(:,b),energy/denominator,'AbsTol',1e-12);
+end
+p.makePlot=true; p.visible=false;
+folder=t.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture); p.savePath=folder.Folder;
+[~,files]=fn_plotNeuralGeometry(r,p);
+fig=openfig(strrep(files.variance,'.png','.fig'),'new','invisible');
+cleanup=onCleanup(@()close(fig)); %#ok<NASGU>
+ax=findobj(fig,'Tag','variableSeparationSummary'); bars=findobj(ax,'Type','bar');
+verifyEqual(t,numel(bars),3);
+for b=1:3
+    verifyTrue(t,any(all(abs(r.variance.windowedVariableFraction-bars(b).YData(:))<1e-12,1)));
+end
+c.separationTimeWindow=[0 .1];
+verifyError(t,@()fn_analyzeNeuralGeometry(X,T,c,p),'neuralGeometry:SeparationTime');
 end
 function testMissingAndNonfinite(t)
 [X,T,c,p]=fixture(); X{1,2}=[]; r=fn_analyzeNeuralGeometry(X,T,c,p);

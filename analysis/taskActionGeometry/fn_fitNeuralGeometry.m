@@ -17,6 +17,7 @@ cfg.method=validatestring(cfg.method,{'lda','meanSquared','regression'});
 cfg.normalization=validatestring(cfg.normalization,{'none','zscore','rms'});
 cfg.covariance=validatestring(cfg.covariance,{'diagonal','withinAnimal'});
 cfg.missingAnimal=validatestring(cfg.missingAnimal,{'exclude','error'});
+cfg.separationSummary=validatestring(cfg.separationSummary,{'selected','choiceTask'});
 validateattributes(cfg.nAxes,{'numeric'},{'scalar','integer','positive','finite'});
 validateattributes(cfg.ridge,{'numeric'},{'scalar','positive','finite'});
 validateattributes(cfg.tolerance,{'numeric'},{'scalar','positive','finite','<',1});
@@ -45,9 +46,23 @@ end
 [X,C,pooledMeans,pooledCov,normalization,neurons,audit,time,counts]=prepare(activity,cfg,model);
 n=size(C,1); nt=numel(time); indices=cellfun(@(v)find(neurons.animalIndex==v), ...
     num2cell((1:na)'), 'UniformOutput',false);
+assert(isempty(cfg.separationTimeWindow)||isempty(cfg.separationTimePoints), ...
+    'neuralGeometry:SeparationTime','Use separationTimeWindow OR separationTimePoints, not both.');
+separationMask=true(size(time));
+if ~isempty(cfg.separationTimeWindow)
+    validateattributes(cfg.separationTimeWindow,{'numeric'},{'vector','numel',2,'finite','real','nondecreasing'});
+    separationMask=time>=cfg.separationTimeWindow(1)&time<=cfg.separationTimeWindow(2);
+elseif ~isempty(cfg.separationTimePoints)
+    validateattributes(cfg.separationTimePoints,{'numeric'},{'vector','finite','real'});
+    assert(all(ismembertol(cfg.separationTimePoints,time,1e-9,'DataScale',1)), ...
+        'neuralGeometry:SeparationTime','Every separationTimePoints value must match a bin in the analyzed time range.');
+    separationMask=ismembertol(time,cfg.separationTimePoints,1e-9,'DataScale',1);
+end
+assert(any(separationMask),'neuralGeometry:SeparationTime','Separation time selection contains no analyzed bins.');
 result=struct(); result.weights=[]; result.weightsRaw=[]; result.axisInfo=table();
 result.neurons=neurons; result.conditions=conditions; result.variables=vars;
 result.time=time; result.cfg=cfg; result.normalization=normalization;
+result.separationTime=time(separationMask);
 result.animalAudit=audit; result.trialCounts=counts; result.conditionMeans=C;
 result.isPseudoPopulation=sum(audit.included)>1;
 result.assumption='Cross-animal trial covariance is unavailable and assumed zero.';
@@ -135,6 +150,7 @@ result.projection=struct('conditionMean',P,'withinConditionVariance',V, ...
     'conditionSEM',sqrt(projectionMeanVariance),'conditionSD',sqrt(projectionTrialVariance), ...
     'errorEstimation','Fixed-axis trial uncertainty; independent trials/animals assumed; no axis-fit or animal-level uncertainty.');
 result.variance=varianceMetrics(P,V,C,design,columns,groups,nf);
+result=fn_addNeuralGeometryTrialSEM(result);
 result.variance.populationTotalVarianceByTime= ...
     result.variance.populationBetweenConditionVarianceByTime+mean(populationNoise,2)';
 result.variance.axisFractionOfPopulationTotalByTime=safeDivide( ...
@@ -153,9 +169,41 @@ result.variance.pooledTrialMeanFraction=safeDivide(trialMeanProjected,trialMeanP
 result.variance.pooledAllTrialsProjectedVariance=allTrialsProjected;
 result.variance.pooledAllTrialsPopulationVariance=allTrialsPopulation;
 result.variance.pooledAllTrialsFraction=safeDivide(allTrialsProjected,allTrialsPopulation);
+% Recenter over the selected condition x time samples, including their noise.
+separationPopulation=sum(var(reshape(C(:,separationMask,:),n,[]),1,2)) ...
+    +mean(populationNoise(separationMask,:),'all');
+result.variance.separationPopulationVariance=separationPopulation;
 result.variance.variableUniquePooledPopulationFraction=safeDivide( ...
-    reshape(mean(result.variance.variableUniqueEnergyByTime,2),K,nf),allTrialsPopulation);
+    reshape(mean(result.variance.variableUniqueEnergyByTime(:,separationMask,:),2),K,nf),separationPopulation);
 result.variance.pooledWeighting='Equal conditions and time bins; equal trials within each animal-condition; unpaired animal residuals.';
+if strcmp(cfg.separationSummary,'choiceTask')
+    assert(isempty(cfg.separationTimeWindow)&&isempty(cfg.separationTimePoints), ...
+        'neuralGeometry:SeparationTime','choiceTask uses fixed windows; leave separationTimeWindow and separationTimePoints empty.');
+    actionIndex=find(strcmpi(vars,'action')|strcmpi(vars,'choice'));
+    taskIndex=find(strcmpi(vars,'task'));
+    assert(isscalar(actionIndex)&&isscalar(taskIndex),'neuralGeometry:SeparationVariables', ...
+        'choiceTask requires one action (or choice) variable and one task variable.');
+    variableIndex=[actionIndex taskIndex taskIndex];
+    windows=[-.15 0;-.15 0;0 .5]; actualTimes=cell(3,1);
+    fraction=zeros(K,3); denominator=zeros(1,3); energy=zeros(K,3);
+    for b=1:3
+        keep=time>=windows(b,1)-1e-9 & time<=windows(b,2)+1e-9;
+        dt=median(diff(time));
+        assert(any(keep)&&isfinite(dt)&&min(time)<=windows(b,1)+dt+1e-9 ...
+            &&max(time)>=windows(b,2)-dt-1e-9,'neuralGeometry:SeparationTime', ...
+            'The analyzed time grid must cover the choice and post-choice windows; extend cfg.timeWindow.');
+        actualTimes{b}=time(keep);
+        denominator(b)=sum(var(reshape(C(:,keep,:),n,[]),1,2))+mean(populationNoise(keep,:),'all');
+        energy(:,b)=mean(result.variance.variableUniqueEnergyByTime(:,keep,variableIndex(b)),2);
+        fraction(:,b)=safeDivide(energy(:,b),denominator(b));
+    end
+    result.separationBars=table(["Choice [-0.15, 0] s";"Task [-0.15, 0] s";"Task [0, 0.5] s"], ...
+        vars(variableIndex(:)),windows(:,1),windows(:,2),actualTimes, ...
+        'VariableNames',{'label','variable','startTime','endTime','actualTimes'});
+    result.variance.windowedVariableFraction=fraction;
+    result.variance.windowedVariableEnergy=energy;
+    result.variance.windowedPopulationVariance=denominator;
+end
 % Variable signal on each axis, relative to ALL pooled neurons' variance.
 populationTotal=result.variance.populationTotalVarianceByTime;
 result.variance.variableUniquePopulationFractionByTime=safeDivide( ...

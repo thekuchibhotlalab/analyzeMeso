@@ -13,9 +13,11 @@ conditions=table(["T1_S1_L";"T1_S2_R";"T2_S3_L";"T2_S4_R"], ...
 [cfg,plotCfg]=fn_neuralGeometryConfig();
 cfg.method='lda';              % 'meanSquared' or 'regression' to compare.
 cfg.nAxes=3;                   % Independently fit up to 3 axes per variable.
-cfg.timeWindow = [-1.0 0.2];         % Whole trial; or e.g. [-0.5 1] seconds.
+cfg.timeWindow = [-1.0 0.5];         % Whole trial; or e.g. [-0.5 1] seconds.
 cfg.normalization='zscore';      % Input has already been normalized.
 cfg.frameRate=15; cfg.eventFrame=31;
+cfg.separationSummary='choiceTask'; % Action [-0.15 0], task [-0.15 0], task [0 0.5] s.
+cfg.separationTimeWindow=[]; cfg.separationTimePoints=[];
 % cfg.animalLabels=string(animals);
 plotCfg.trialTypes=conditions.conditionName;
 

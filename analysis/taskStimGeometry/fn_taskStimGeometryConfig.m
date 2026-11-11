@@ -15,7 +15,7 @@ cfg.ridge=1e-3;                     % Relative to mean within-class variance.
 cfg.minTrials=2;
 cfg.missingAnimal='exclude';        % Or 'error'; require all conditions in each retained animal.
 cfg.animalLabels=strings(0,1);
-cfg.nPseudoTrials=[];               % []: smallest available count per condition, without replacement.
+cfg.nPseudoTrials=[];               % []: all valid trials; max count per condition, cycling shorter animals.
                                    % Integer: this many per condition, sampled WITH replacement.
 cfg.seed=1;
 plotCfg.makePlot=true;

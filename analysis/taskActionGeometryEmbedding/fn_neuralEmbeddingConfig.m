@@ -1,6 +1,7 @@
 function [cfg,plotCfg] = fn_neuralEmbeddingConfig()
 %FN_NEURALEMBEDDINGCONFIG Trial-averaged, pooled-neuron UMAP options.
 cfg.nNeighbors=100;           % Paper setting; capped at nPoints-1.
+cfg.nComponents=3;           % Fit three UMAP coordinates; 2 retains the optional 2D view.
 cfg.minDist=0.1;
 cfg.spread=1;
 cfg.metric='correlation';     % 'correlation', 'euclidean', or 'cosine'.
@@ -25,8 +26,10 @@ plotCfg.makePlot=true;
 plotCfg.visible=true;
 plotCfg.savePath='';            % Save PNG + editable FIG files when nonempty.
 plotCfg.prefix='neuralEmbedding';
-plotCfg.colorBy=strings(0,1); % []: conditionName, then all cfg.variables.
-plotCfg.showTime=true;        % Append a continuous time-colored panel across all conditions.
+plotCfg.layout='combined';   % Three panels: learning/time, task, action; 'labels': legacy panels.
+plotCfg.taskActionTimeWindow=[-1 1]; % Seconds; display filter for task/action only. [] shows all.
+plotCfg.colorBy=strings(0,1); % Only for 'labels': [] uses conditionName and cfg.variables.
+plotCfg.showTime=true;        % Only for 'labels': append the time panel.
 plotCfg.connectTime=false;    % Optional lines within each condition, in time order.
-plotCfg.pointSize=24;
+plotCfg.pointSize=6;
 end

@@ -6,7 +6,7 @@ X = TCAmatrix;
 nanFlag = isnan(nanmean(nanmean(nanmean(X,2),3),4));
 X(nanFlag,:,:,:) = []; 
 
-R = 8; 
+R = 1:2:15; 
 M = {}; VEpct = []; TzProj = {};
 for i = 1:length(R)
     [M{i},k0,info,VEpct(i),TzProj{i}] = runTCA(X,R(i));
@@ -25,7 +25,7 @@ function [M,k0,info,VEpct,TzProj] = runTCA(X,R)
     %[M,k0,info] = cp_wopt(Xobs, Wtt, R, 'init','rand',...
     %    'skip_zeroing',true);
 
-    [M,k0,info] = cp_apr(Xobs,R,'maxiters',300);
+    [M,k0,info] = cp_apr(Xobs,R,'maxiters',400);
     % compute model fit
     Xhat = double(full(M));
     

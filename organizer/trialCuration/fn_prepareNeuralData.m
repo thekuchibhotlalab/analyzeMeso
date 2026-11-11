@@ -22,6 +22,8 @@ function [curated,figures] = fn_prepareNeuralData(curated,sessionInfoFile,vararg
 % are replaced by the explicit lists. 'TrialNumberField','trialNum' optionally
 % matches values in that column instead of trialInfo row numbers (the default).
 % 'GroupManualTrialsByCondition',true splits a numeric pool by cfg stimulus/action.
+% cfg.neuralField='dffStimChoice' derives the 100-frame composite from existing
+% dffStim/dffChoice arrays without reparsing raw fluorescence. Events at 30/36.
 p=inputParser;
 if nargin<2, sessionInfoFile=[]; end
 addParameter(p,'DataPath','',@(x)(ischar(x)&&(isrow(x)||isempty(x)))|| ...
@@ -72,6 +74,12 @@ if ischar(sessionInfoFile)||isstring(sessionInfoFile)
     curated.neuralSourceFile=char(java.io.File(char(sessionInfoFile)).getCanonicalPath());
 end
 cfg=curated.cfg;
+if strcmpi(cfg.neuralField,'dffStimChoice')
+    [~,curated.neuralAlignment]=fn_makeDffStimChoice([],[]);
+    cfg.alignedEventFrame=curated.neuralAlignment.choiceFrame;
+    cfg.alignedEventName='Choice (composite)';
+    curated.cfg=cfg;
+end
 selection=fn_extractSelectedNeuralTrials(sessionInfo,curated.selection,cfg);
 selection=fn_normalizeNeuralData(selection,cfg);
 curated.neuralSelection=selection;

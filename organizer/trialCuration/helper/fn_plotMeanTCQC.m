@@ -16,7 +16,10 @@ for k=1:nCond
     if ~isempty(y)
         plot(y,'LineWidth',1.5);
         hold on;
-        if cfg.alignedEventFrame>=1 && cfg.alignedEventFrame<=numel(y)
+        if strcmpi(cfg.neuralField,'dffStimChoice')
+            xline(30,'--k','Stimulus'); xline(36,'--k','Choice');
+            xline(32.5,':','Join');
+        elseif cfg.alignedEventFrame>=1 && cfg.alignedEventFrame<=numel(y)
             xline(cfg.alignedEventFrame,'--k',cfg.alignedEventName);
         end
     end

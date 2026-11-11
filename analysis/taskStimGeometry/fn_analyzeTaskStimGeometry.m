@@ -131,7 +131,7 @@ result.cosine(result.cosine>1)=1; result.cosine(result.cosine< -1)=-1;
 result.angleDegrees=acosd(result.cosine); % Oriented angles: 0 parallel, 90 orthogonal, 180 opposite.
 result.estimation='In-sample regularized LDA; equal classes and equal conditions within each class. Not cross-validated.';
 result.assumption='Pooled neurons; cross-animal within-condition trial noise is independent. Plotted multi-animal points are pseudo-trials.';
-result.projection=projectTrials(X,maps,W,thresholds,indices,cfg,nc,na);
+result.projection=fn_projectTaskStimTrials(X,maps,W,thresholds,indices,cfg,nc,na);
 [figures,result.plotFiles]=fn_plotTaskStimGeometry(result,plotCfg);
 end
 
@@ -216,32 +216,6 @@ audit=table((1:na)',cfg.animalLabels,included,nNeurons,dropped,reason, ...
     'VariableNames',{'animalIndex','animalLabel','included','nNeurons','nDroppedNeurons','reason'});
 end
 
-function P=projectTrials(X,maps,W,thresholds,indices,cfg,nc,na)
-stream=RandStream('mt19937ar','Seed',cfg.seed); animals=find(~cellfun(@isempty,indices));
-P=struct('scores',{cell(nc,1)},'margins',{cell(nc,1)},'sourceTrial',{cell(nc,1)}, ...
-    'sourceRowInReduced',{cell(nc,1)},'animalIndices',animals(:)', ...
-    'animalContribution',{cell(nc,na)},'isPseudoPopulation',numel(animals)>1);
-for c=1:nc
-    counts=cellfun(@(x)size(x,2),X(c,animals));
-    if numel(animals)==1
-        N=counts(1); % With one animal show every actual trial, no resampling.
-    elseif isempty(cfg.nPseudoTrials), N=min(counts);
-    else, N=cfg.nPseudoTrials; end
-    scores=zeros(N,size(W,2)); source=zeros(N,numel(animals)); reduced=source;
-    for j=1:numel(animals)
-        a=animals(j); contribution=X{c,a}'*W(indices{a},:);
-        P.animalContribution{c,a}=contribution;
-        if numel(animals)==1, rows=(1:N)';
-        elseif isempty(cfg.nPseudoTrials), rows=randperm(stream,counts(j),N)';
-        else, rows=randi(stream,counts(j),N,1); end
-        scores=scores+contribution(rows,:);
-        reduced(:,j)=rows; source(:,j)=maps{c,a}.sourceTrial(rows);
-    end
-    P.scores{c}=scores; P.margins{c}=scores-thresholds;
-    P.sourceTrial{c}=source; P.sourceRowInReduced{c}=reduced;
-end
-end
-
 function cfg=options(cfg,defaults)
 assert(isstruct(cfg)&&isscalar(cfg)&&isempty(setdiff(fieldnames(cfg),fieldnames(defaults))), ...
     'taskStim:Config','Use supported fields from fn_taskStimGeometryConfig.');
@@ -249,3 +223,4 @@ for name=fieldnames(defaults)'
     if ~isfield(cfg,name{1}), cfg.(name{1})=defaults.(name{1}); end
 end
 end
+

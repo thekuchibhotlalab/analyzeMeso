@@ -1516,7 +1516,7 @@ end
 
 function metadata=fn_stripAnimalNeuralFields(metadata)
     assert(istable(metadata),'Animal:Metadata','Session metadata must be a table.');
-    remove=intersect({'TC','tuning','dffStim','dffChoice','dffReward'}, ...
+    remove=intersect({'TC','tuning','dffStim','dffChoice','dffStimChoice','dffReward'}, ...
         metadata.Properties.VariableNames,'stable');
     metadata(:,remove)=[];
 end

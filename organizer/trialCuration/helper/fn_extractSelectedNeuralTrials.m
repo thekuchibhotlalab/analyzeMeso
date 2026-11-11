@@ -11,6 +11,9 @@ function neuralSelection = fn_extractSelectedNeuralTrials(sessionInfo,selection,
 %   trialInfo.trialInSession -> neural array third dimension
 
 required={'sessionRec',cfg.neuralField};
+deriveComposite=strcmpi(cfg.neuralField,'dffStimChoice') && ...
+    ~ismember(cfg.neuralField,sessionInfo.Properties.VariableNames);
+if deriveComposite, required={'sessionRec','dffStim','dffChoice'}; end
 if cfg.requireGoodTracking
     required{end+1}='goodTracking';
 end
@@ -118,8 +121,14 @@ for k=1:numel(selection)
             end
         end
 
-        col=sessionInfo.(cfg.neuralField);
-        X=col{s};
+        if deriveComposite
+            X=fn_makeDffStimChoice(sessionInfo.dffStim{s},sessionInfo.dffChoice{s});
+        else
+            col=sessionInfo.(cfg.neuralField); X=col{s};
+        end
+        if strcmpi(cfg.neuralField,'dffStimChoice') && ~isempty(X)
+            assert(size(X,2)==100,'trialCuration:CompositeShape','dffStimChoice must contain exactly 100 frames.');
+        end
 
         if isempty(X)
             nMissing=nMissing+numel(trialRows);

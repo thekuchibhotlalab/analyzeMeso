@@ -8,7 +8,7 @@ cfg.excludeMiss = false;
 cfg.useRTFilter = true;
 cfg.minTrials = 10;
 
-cfg.neuralField = 'dffChoice';
+cfg.neuralField = 'dffChoice'; % Also dffStim or dffStimChoice (100 frames; stim 30, choice 36).
 cfg.requireGoodTracking = true;
 
 %% Session selection and neural loading.

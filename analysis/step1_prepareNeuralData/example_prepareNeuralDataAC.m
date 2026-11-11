@@ -24,8 +24,8 @@ end
 %save('B:\analysis\trialSelection\interleavedAnalysis\allTrialsel.mat','allTrialsel','-v7.3')
 
 %%
-tempAct = cell(4, numel(allTrialsel));
-for i = 1:4                      % Conditions
+tempAct = cell(8, numel(allTrialsel));
+for i = 1:8                      % Conditions
     for a = 1:numel(allTrialsel)   % Animals
         X = allTrialsel{a}.neuralSelection(i).neuralRaw;
 
@@ -41,9 +41,9 @@ repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo,'analysis','taskActionGeometry'));
 
 % Four rows: T1-left, T1-right, T2-left, T2-right. Columns remain animals.
-%intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
+intNames = ["Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];
 %intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R"];
-intNames = ["T2E_S1_L","T2E_S2_R","T2E_S3_L","T2E_S4_R"];
+%intNames = ["T2E_S1_L","T2E_S2_R","T2E_S3_L","T2E_S4_R"];
 
 
 %intNames = ["T1_S1_L","T1_S2_R","T2_S3_L","T2_S4_R","Int_S1_L","Int_S2_R","Int_S3_L","Int_S4_R"];

@@ -1,0 +1,39 @@
+%%
+clear;
+aniPath = 'B:\animal';
+
+animals = {'zz153_PPC','zz159_PPC',...
+           'zz172_PPC1','zz172_PPC2','zz177_PPC','zz180_PPC'};
+%% Load animal Data
+allAni = {};
+for i = 1:length(animals)
+    load([aniPath filesep animals{i} '_animal.mat'],'ani');
+    allAni{i} = ani;
+end
+
+%% load data accoridng to cfg
+cfg = fn_TCA_TrialSelectionConfig();
+allTrialsel = {};
+for i = 1:length(animals)
+    trialSel = allAni{i}.fn_prepareTrialData(cfg,'MakePlot', true);
+    allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel, 'PlotSavePath', 'B:\analysis\trialSelection\TCA');
+    %allTrialsel{i}= allAni{i}.fn_prepareNeuralData(trialSel,'DataPath', putYourDataPath);
+end
+%save('B:\analysis\trialSelection\interleavedAnalysis\allTrialsel.mat','allTrialsel','-v7.3')
+%%
+tempAct = cell(16, numel(allTrialsel));
+for i = 1:16                      % Conditions
+    for a = 1:numel(allTrialsel)   % Animals
+        X = allTrialsel{a}.neuralSelection(i).neuralRaw;
+
+        if ~isempty(X)
+            mask = allTrialsel{a}.tracking.selectedNeuronMask;
+            tempAct{i,a} = X(mask,:,:);
+        end
+    end
+end
+%%
+tempActMat = 
+
+
+

@@ -25,7 +25,7 @@ analysisCfg.rewardOffsets=3:4;
 analysisCfg.animalLabels=string(animals);
 analysisCfg.normalization='none';   % Or 'zscore' across reduced responses per neuron.
 analysisCfg.covariance='withinAnimal'; % Or 'diagonal'.
-analysisCfg.nPseudoTrials=[];        % Min trial count per condition; no replacement.
+analysisCfg.nPseudoTrials=[];        % Include every valid trial; cycle shorter animals to max count.
 % analysisCfg.nPseudoTrials=500;     % Fixed number, with replacement; not independent extra data.
 % plotCfg.visible=false; plotCfg.savePath='B:\analysis\taskStimGeometry';
 

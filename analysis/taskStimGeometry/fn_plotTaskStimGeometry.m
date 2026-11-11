@@ -16,6 +16,13 @@ if size(p.axisColors,1)<nf
     p.axisColors(end+1:nf,:)=defaults.axisColors(size(p.axisColors,1)+1:nf,:);
 end
 figures=struct(); files=struct(); if ~p.makePlot, return; end
+% Upgrade older saved results without refitting axes or reloading fluorescence.
+if ~isfield(r.projection,'sampling')
+    na=height(r.animalAudit); indices=cell(na,1);
+    for a=1:na, indices{a}=find(r.neurons.animalIndex==a); end
+    r.projection=fn_projectTaskStimTrials(r.reducedActivity,r.trialMap,r.weights, ...
+        r.thresholds,indices,r.cfg,height(r.conditions),na);
+end
 prefix=char(p.prefix);
 assert(~isempty(prefix)&&~contains(prefix,{'/','\'}),'taskStim:PlotConfig','Use a filename prefix.');
 visible='off'; if p.visible, visible='on'; end
@@ -25,8 +32,25 @@ if ~p.visible, cleanup=onCleanup(@()close(fig)); end %#ok<NASGU>
 layout=tiledlayout(fig,nf/3,3,'TileSpacing','compact','Padding','compact');
 pairs=[1 2;1 3;2 3];
 if nf==6, pairs=[pairs;pairs+3]; end
-labels=string(r.conditions.stimulus);
-levels=unique(labels,'stable'); colors=lines(numel(levels));
+stimuli=string(r.conditions.stimulus);
+if ismember('task',r.conditions.Properties.VariableNames), tasks=string(r.conditions.task);
+else, tasks=string(r.conditions.(r.cfg.comparisons(3))); end
+labels=tasks+" / "+stimuli;
+levels=unique(labels,'stable'); colors=zeros(numel(levels),3);
+for s=1:numel(levels)
+    c=find(labels==levels(s),1); task=tasks(c);
+    taskStimuli=unique(stimuli(tasks==task),'stable');
+    stimIndex=find(taskStimuli==stimuli(c));
+    if ismember(stimuli(c),["S1","S2","S3","S4"])
+        colors(s,:)=multitaskColors(stimuli(c));
+    elseif ismember(task,["T1","T2"])&&numel(taskStimuli)<=2
+        colorID=2*(double(task=="T2"))+stimIndex;
+        colors(s,:)=multitaskColors("S"+colorID);
+    else
+        % Custom labels still use the shared task palette in stable order.
+        colors(s,:)=multitaskColors("S"+(1+mod(s-1,4)));
+    end
+end
 for panel=1:size(pairs,1)
     ax=nexttile(layout); hold(ax,'on'); pair=pairs(panel,:);
     if ~all(r.axisInfo.valid(pair))
@@ -39,16 +63,19 @@ for panel=1:size(pairs,1)
         handles(s)=scatter(ax,scores(:,pair(1)),scores(:,pair(2)),p.pointSize, ...
             colors(s,:),'filled','MarkerFaceAlpha',0.45,'MarkerEdgeAlpha',0.45);
     end
-    xline(ax,r.thresholds(pair(1)),'--','Color',p.axisColors(pair(1),:),'LineWidth',1.2,'HandleVisibility','off');
-    yline(ax,r.thresholds(pair(2)),'--','Color',p.axisColors(pair(2),:),'LineWidth',1.2,'HandleVisibility','off');
-    xlabel(ax,axisLabel(r,pair(1)),'Color',p.axisColors(pair(1),:),'Interpreter','none');
-    ylabel(ax,axisLabel(r,pair(2)),'Color',p.axisColors(pair(2),:),'Interpreter','none');
-    ax.XColor=p.axisColors(pair(1),:); ax.YColor=p.axisColors(pair(2),:);
+    xline(ax,r.thresholds(pair(1)),'--k','LineWidth',.8,'HandleVisibility','off');
+    yline(ax,r.thresholds(pair(2)),'--k','LineWidth',.8,'HandleVisibility','off');
+    xlabel(ax,axisLabel(r,pair(1)),'Color','k','Interpreter','none');
+    ylabel(ax,axisLabel(r,pair(2)),'Color','k','Interpreter','none');
+    set(ax,'XColor','k','YColor','k','TickDir','out','FontName','Arial');
     title(ax,sprintf('%s vs %s',r.cfg.comparisons(pair(1)),r.cfg.comparisons(pair(2))),'Interpreter','none');
-    axis(ax,'equal'); box(ax,'on'); grid(ax,'on');
+    axis(ax,'equal'); box(ax,'off'); grid(ax,'off');
     if panel==1, legend(ax,handles,cellstr(levels),'Location','best','Interpreter','none'); end
 end
-if r.projection.isPseudoPopulation, points='Independent pseudo-trials'; else, points='Actual trials'; end
+if r.projection.isPseudoPopulation
+    points='Pseudo-trials (not simultaneous recordings)';
+    if strcmp(r.projection.sampling,'allTrials'), points=[points '; every valid source trial included; shorter animals reused']; end
+else, points='All valid actual trials'; end
 title(layout,{sprintf('%s responses | %d pooled neurons | %d animals', ...
     r.cfg.period,height(r.neurons),sum(r.animalAudit.included)), ...
     [points '; dashed lines = equal-prior LDA decision thresholds (in-sample)']});
@@ -56,7 +83,8 @@ if ~isempty(p.savePath)
     if ~isfolder(p.savePath), mkdir(p.savePath); end
     file=fullfile(p.savePath,[prefix '_' r.cfg.period '.png']);
     exportgraphics(fig,file,'Resolution',150); files.projections=file;
-    savefig(fig,[file(1:end-4) '.fig']);
+    fig.Visible='on'; savefig(fig,[file(1:end-4) '.fig']);
+    if ~p.visible, fig.Visible='off'; end
 end
 if p.visible, figures.projections=fig; else, figures.projections=[]; end
 [figures.similarity,file]=plotSimilarity(r,p,visible,prefix);
@@ -74,13 +102,9 @@ imagesc(ax,C,'AlphaData',isfinite(C)); ax.Color=[0.8 0.8 0.8];
 caxis(ax,[-1 1]);
 palette=interp1([-1 0 1],[0.15 0.3 0.8;1 1 1;0.8 0.15 0.15],linspace(-1,1,257));
 colormap(ax,palette); cb=colorbar(ax); cb.Label.String='Cosine similarity';
-axis(ax,'image'); ax.XTick=1:nf; ax.YTick=1:nf; ax.TickLabelInterpreter='tex';
-labels=cell(nf,1);
-for k=1:nf
-    name=char(r.cfg.comparisons(k)); name=strrep(name,'\','\\');
-    name=strrep(name,'_','\_'); name=strrep(name,'{','\{'); name=strrep(name,'}','\}');
-    labels{k}=sprintf('\\color[rgb]{%.3f,%.3f,%.3f}%s',p.axisColors(k,:),name);
-end
+axis(ax,'image'); ax.XTick=1:nf; ax.YTick=1:nf; ax.TickLabelInterpreter='none';
+labels=cellstr(r.cfg.comparisons);
+set(ax,'XColor','k','YColor','k','TickDir','out','FontName','Arial'); grid(ax,'off');
 ax.XTickLabel=labels; ax.YTickLabel=labels;
 for row=1:nf
     for col=1:nf
@@ -97,7 +121,8 @@ file='';
 if ~isempty(p.savePath)
     file=fullfile(p.savePath,[prefix '_' r.cfg.period '_similarity.png']);
     exportgraphics(fig,file,'Resolution',150);
-    savefig(fig,[file(1:end-4) '.fig']);
+    fig.Visible='on'; savefig(fig,[file(1:end-4) '.fig']);
+    if ~p.visible, fig.Visible='off'; end
 end
 if p.visible, handle=fig; else, handle=[]; end
 end

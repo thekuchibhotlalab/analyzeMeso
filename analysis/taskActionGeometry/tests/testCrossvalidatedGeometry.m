@@ -54,6 +54,8 @@ verifyEqual(t,r.crossValidation.splits{1}.projection.conditionMean(:,:,1),m.weig
 end
 function testRepeatSEMAndMeanDirections(t)
 r=t.TestData.r; cv=r.crossValidation;
+old=r; old.projection=rmfield(old.projection,'conditionTrialSEM');
+verifyEqual(t,fn_neuralGeometryTrialSEM(r,1,1:4),fn_neuralGeometryTrialSEM(old,1,1:4),'AbsTol',1e-12);
 v=cellfun(@(s)s.variance.pooledTrialMeanFraction,cv.splits,'UniformOutput',false);
 v=cat(2,v{:}); repeat=reshape(mean(reshape(v,[],5,2),2),[],2);
 verifyEqual(t,r.variance.pooledTrialMeanFraction,mean(repeat,2),'AbsTol',1e-12);
@@ -67,6 +69,62 @@ for s=1:10
         verifyEqual(t,W(:,ids)'*W(:,ids),eye(numel(ids)),'AbsTol',1e-10);
     end
 end
+end
+function testSelectedSeparationCV(t)
+c=t.TestData.cfg; c.decode=false; bins=[2 4 6]; c.separationTimePoints=c.time(bins);
+r=fn_analyzeNeuralGeometry(t.TestData.X,t.TestData.T,c,t.TestData.plot);
+cv=r.crossValidation; m=cv.models{1}; C=[]; noise=0;
+for a=1:2
+    ix=find(r.neurons.animalIndex==a); means=[];
+    for k=1:4
+        mask=cv.assignments{k,a}(:,1)==1;
+        x=(t.TestData.X{k,a}(:,bins,mask)-m.normalization.offset(ix))./m.normalization.scale(ix);
+        means(:,:,k)=mean(x,3); %#ok<AGROW>
+        noise=noise+sum(var(x,1,3),'all')/(4*numel(bins));
+    end
+    C=cat(1,C,means);
+end
+denom=sum(var(reshape(C,size(C,1),[]),1,2))+noise;
+verifyEqual(t,cv.splits{1}.variance.separationPopulationVariance,denom,'AbsTol',1e-10);
+v=cellfun(@(s)s.variance.variableUniquePooledPopulationFraction(:),cv.splits,'UniformOutput',false);
+v=cat(2,v{:}); repeats=reshape(mean(reshape(v,[],c.cvFolds,c.cvRepeats),2),[],c.cvRepeats);
+verifyEqual(t,r.variance.variableUniquePooledPopulationFraction(:),mean(repeats,2),'AbsTol',1e-12);
+verifyEqual(t,cv.varianceSEM.variableUniquePooledPopulationFraction(:),std(repeats,0,2)/sqrt(c.cvRepeats),'AbsTol',1e-12);
+end
+function testFixedChoiceTaskWindowsCV(t)
+c=t.TestData.cfg; c.decode=false; c.separationSummary='choiceTask';
+c.time=[-.15 -.1 0 .1 .2 .4 .5];
+r=fn_analyzeNeuralGeometry(t.TestData.X,t.TestData.T,c,t.TestData.plot);
+cv=r.crossValidation;
+verifyEqual(t,r.separationBars.actualTimes{1},[-.15 -.1 0]);
+verifyEqual(t,r.separationBars.actualTimes{3},[0 .1 .2 .4 .5]);
+for s=1:numel(cv.splits)
+    m=cv.models{s}; rep=ceil(s/c.cvFolds); fold=mod(s-1,c.cvFolds)+1;
+    for b=1:3
+        if b<3, bins=1:3; else, bins=3:7; end
+        C=[]; noise=0;
+        for a=1:2
+            ix=find(r.neurons.animalIndex==a); means=[];
+            for k=1:4
+                mask=cv.assignments{k,a}(:,rep)==fold;
+                x=(t.TestData.X{k,a}(:,bins,mask)-m.normalization.offset(ix))./m.normalization.scale(ix);
+                means(:,:,k)=mean(x,3); %#ok<AGROW>
+                noise=noise+sum(var(x,1,3),'all')/(4*numel(bins));
+            end
+            C=cat(1,C,means);
+        end
+        denom=sum(var(reshape(C,size(C,1),[]),1,2))+noise;
+        v=cv.splits{s}.variance;
+        verifyEqual(t,v.windowedPopulationVariance(b),denom,'AbsTol',1e-10);
+        variable=1+(b>1);
+        verifyEqual(t,v.windowedVariableFraction(:,b), ...
+            mean(v.variableUniqueEnergyByTime(:,bins,variable),2)/denom,'AbsTol',1e-12);
+    end
+end
+v=cellfun(@(s)s.variance.windowedVariableFraction(:),cv.splits,'UniformOutput',false);
+v=cat(2,v{:}); repeats=reshape(mean(reshape(v,[],c.cvFolds,c.cvRepeats),2),[],c.cvRepeats);
+verifyEqual(t,r.variance.windowedVariableFraction(:),mean(repeats,2),'AbsTol',1e-12);
+verifyEqual(t,cv.varianceSEM.windowedVariableFraction(:),std(repeats,0,2)/sqrt(c.cvRepeats),'AbsTol',1e-12);
 end
 function testSingleNeuronSummariesAndTrainingRankings(t)
 r=t.TestData.r; d=r.decoding.splits{1}; m=r.crossValidation.models{1};

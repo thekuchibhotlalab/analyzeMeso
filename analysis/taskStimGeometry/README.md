@@ -126,8 +126,12 @@ Animals do not share simultaneous trials. For every condition, draw a trial
 independently from each included animal, concatenate its reduced neural response,
 and project on all fitted axes. This preserves within-animal neural covariance.
 The fit uses analytic means/covariances of the original trials, not the random
-pseudo-trials. Default `nPseudoTrials=[]` uses the smallest available count for
-that condition and samples without replacement within each animal. Set an integer
+pseudo-trials. Default `nPseudoTrials=[]` uses the largest available count for
+that condition. Each animal's trials are independently shuffled; shorter animals
+repeat shuffled cycles to fill that count. Every valid trial of each retained
+animal is included at least once, rather than dropping trials to match the
+smallest animal. Invalid event windows and excluded animals remain excluded.
+This is still a pseudo-population, not simultaneous recordings. Set an integer
 to draw that many points with replacement. A private RNG (`cfg.seed`) makes
 sampling reproducible without changing the caller's RNG. With one included animal,
 all real trials are plotted without resampling.
@@ -155,20 +159,27 @@ plotCfg.savePath='B:\analysis\taskStimGeometry';
 [figures,files]=fn_plotTaskStimGeometry(taskStim,plotCfg);
 ```
 
+Old saved results with `cfg.nPseudoTrials=[]` are automatically resampled using
+all valid trials when replotted, using their saved reduced responses and weights.
+Rerun the analysis to store updated projection arrays in the result itself.
+An explicit integer `nPseudoTrials` still requests fixed-count sampling.
+
 The first row contains stimT1 vs stimT2, stimT1 vs task, and stimT2 vs task.
 The second row contains stimS1S3 vs stimS2S4, stimS1S3 vs action, and stimS2S4
-vs action. Each row contains the three pairwise 2D plots of its axis triplet. Axis
-labels, ticks, and their decision-boundary lines use consistent comparison colors
-across panels; stimulus point colors remain unchanged. Customize the six RGB
-rows of `plotCfg.axisColors` in comparison order.
+vs action. Each row contains the three pairwise 2D plots of its axis triplet.
+Points use `multitaskColors('S1')` through `multitaskColors('S4')`: S1/S2 are
+blue shades (T1) and S3/S4 orange shades (T2). Legends include task and stimulus.
+Axes, labels and decision boundaries are black, ticks point outward, and grids
+are removed. The legacy `plotCfg.axisColors` field is accepted but no longer
+colors the axes. Add `helper_function` to the MATLAB path for the shared palette.
 
 `figures.similarity` shows a separate 6 x 6 neural-weight cosine matrix, with
 both cosine and angle in degrees annotated in each cell. Because weights are unit
 vectors, cosine is `weights'*weights`; `angleDegrees=acosd(cosine)`. These are
 oriented angles (0 parallel, 90 orthogonal, 180 opposite), not absolute/unsigned
 angles or correlations of activity. The red-white-blue scale is fixed to [-1,1],
-with zero white; undefined axes are gray. Matrix labels match the comparison
-colors. Results are stored as `taskStim.cosine` and `taskStim.angleDegrees`.
+with zero white; undefined axes are gray. Matrix labels are black.
+Results are stored as `taskStim.cosine` and `taskStim.angleDegrees`.
 
 PNG export writes `taskStimGeometry_stimulus.png` and
 `taskStimGeometry_stimulus_similarity.png` (or the corresponding `reward` names).

@@ -1,5 +1,5 @@
 function [result,figures] = fn_analyzeNeuralEmbedding(activity,conditions,cfg,plotCfg)
-%FN_ANALYZENEURALEMBEDDING One unsupervised 2D UMAP of condition x time means.
+%FN_ANALYZENEURALEMBEDDING One unsupervised 3D UMAP of condition x time means.
 % Input: condition x animal cells of neuron x time x trial activity; a matching
 % conditionName + categorical-factor table; independent analysis/plot configs.
 % Neurons concatenate across animals. Labels NEVER enter the UMAP fit.
@@ -13,6 +13,7 @@ cfg.metric=validatestring(cfg.metric,{'correlation','euclidean','cosine'});
 cfg.init=validatestring(cfg.init,{'spectral','random'});
 cfg.missingAnimal=validatestring(cfg.missingAnimal,{'exclude','error'});
 validateattributes(cfg.nNeighbors,{'numeric'},{'scalar','integer','>=',3,'<=',199});
+validateattributes(cfg.nComponents,{'numeric'},{'scalar','integer','>=',2,'<=',3});
 validateattributes(cfg.minDist,{'numeric'},{'scalar','positive','finite','<=',10});
 validateattributes(cfg.spread,{'numeric'},{'scalar','positive','finite','<=',10,'>=',cfg.minDist});
 validateattributes(cfg.nEpochs,{'numeric'},{'scalar','integer','>=',5,'finite'});
@@ -62,11 +63,11 @@ end
 state=rng; restoreRng=onCleanup(@()rng(state)); %#ok<NASGU>
 warningState=warning; restoreWarnings=onCleanup(@()warning(warningState)); %#ok<NASGU>
 % One output avoids optional clustering. No labels, templates, or supervision.
-embedding=run_umap(X,'n_neighbors',nNeighbors,'n_components',2, ...
+embedding=run_umap(X,'n_neighbors',nNeighbors,'n_components',cfg.nComponents, ...
     'min_dist',cfg.minDist,'spread',cfg.spread,'metric',cfg.metric, ...
     'n_epochs',cfg.nEpochs,'randomize',cfg.randomize,'init',cfg.init,'method',cfg.backendMethod, ...
     'sgd_tasks',1,'verbose','none','ask_to_save_template',false);
-assert(isequal(size(embedding),[nPoints 2])&&all(isfinite(embedding),'all'), ...
+assert(isequal(size(embedding),[nPoints cfg.nComponents])&&all(isfinite(embedding),'all'), ...
     'neuralEmbedding:Backend','run_umap returned an invalid embedding.');
 conditionIndex=repelem((1:nc)',nt); timeIndex=repmat((1:nt)',nc,1);
 result=struct('embedding',embedding,'populationVectors',X,'conditions',conditions, ...
@@ -78,7 +79,7 @@ result.neurons=neurons; result.animalAudit=audit; result.trialCounts=counts;
 result.normalization=normInfo;
 result.backend=struct('name','Herzenberg MATLAB run_umap','file',which('run_umap'), ...
     'version',UMAP.VERSION,'matlabVersion',version, ...
-    'method',cfg.backendMethod,'nNeighborsUsed',nNeighbors,'nComponents',2, ...
+    'method',cfg.backendMethod,'nNeighborsUsed',nNeighbors,'nComponents',cfg.nComponents, ...
     'randomize',cfg.randomize,'nEpochs',cfg.nEpochs,'initialization',cfg.init);
 result.diagnostics=diagnostics(X,embedding,cfg);
 result.estimation='Unsupervised embedding of trial means; labels are only annotations. No trial-level inference.';
@@ -169,7 +170,7 @@ d=struct('nNeighbors',k,'neighborOverlap',NaN,'trustworthiness',NaN,'status','no
 if ~isempty(cfg.maxDiagnosticPoints)&&n>cfg.maxDiagnosticPoints
     d.status='skipped: nPoints exceeds maxDiagnosticPoints'; return;
 end
-% Compare input-space neighbors (chosen metric) with 2D Euclidean neighbors.
+% Compare input-space neighbors with Euclidean neighbors in all fitted dimensions.
 DX=pdist2(X,X,cfg.metric); DY=pdist2(Y,Y,'euclidean');
 DX(1:n+1:end)=-Inf; DY(1:n+1:end)=-Inf;
 [~,hi]=sort(DX,2); [~,lo]=sort(DY,2); penalty=0; overlap=0;
